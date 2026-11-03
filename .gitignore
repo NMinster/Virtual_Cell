@@ -1,0 +1,11 @@
+# Scratch research notes behind docs/*.md memos (not tracked)
+research_notes/
+reports/
+
+# Python / editors
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.vscode/
+.idea/
+.DS_Store
