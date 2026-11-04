@@ -80,9 +80,16 @@ Contexts added before the freeze (section 10 lists them) follow the same
 template; the planned additions are the ex vivo ovulation series, the
 Wang/Suh estropausal cohort, the VCD subset and the knockout datasets.
 
-**Compartments**: the eight major types. A bundle is scorable only when
+**Compartments**: the eight major types. A bundle is built only when
 both groups have ≥ 50 cells (`min_cells_hard`); the target is Arc's 400.
-Bundles below the gate are listed, not scored.
+A built bundle is **scored** only when ≥ 5 real DE genes remain after
+the exclusions (`min_de_genes_to_score`): a compartment that does not
+respond cannot tell models apart, and the empty-set conventions (Jaccard
+of two empty sets = 1, a zero delta's PDS = 0.5) would otherwise make the
+control copy look perfect there. Bundles below either gate are listed
+in the ceilings table with their reason; only scored bundles enter the
+context score and the PDS pools, and PDS itself is reported only when
+its pool holds ≥ 5 scored bundles (`pds.min_pool`).
 
 **Members** (six; the `lite` implementation in
 `ovary_fm/bench/metrics.py` follows the published `vcc2026`
@@ -104,25 +111,34 @@ on arithmetic means (ε = 10⁻⁹), Benjamini-Hochberg within the bundle at
 0.05; the real control is the comparison group for both the prediction
 and the real cells.
 
-**Rescaling.** Every member: s = (u − b) / (r − b). b is the baseline, r
-the replicate. The expression member is clamped to [0, 1], the NMAE member
-floored at −6, nothing else is clipped. Bundle score = mean of the
-available members; context score = mean of its bundles; overall = mean
-over contexts.
+**Rescaling.** Every member: s = (u − b0) / (r − b0). b0 is the control
+cells copied (no effect), r the replicate. The expression member is
+clamped to [0, 1], the NMAE member floored at −6, nothing else is
+clipped. Bundle score = mean of the available members; context score =
+mean of its scored bundles; overall = mean over contexts. The scale is
+anchored on b0, not on the transfer baseline, because wherever the
+transfer already sits near the ceiling the denominator r − b1 collapses
+and the scores explode (seen on the first synthetic run); Arc anchors on
+a near-null baseline for the same reason.
 
-**Baselines.** b0 = the control cells copied. b1 = retrieval and
-transfer: the per-gene fold change of the same condition family in other
-datasets (the nearest time point when both carry one; the source's
-significant genes only, 1.0 elsewhere; geometric mean over sources),
-applied to this context's control cells and Poisson-resampled. s is
-computed against b1 wherever a source exists, else against b0; both are
-reported. A model must beat b1 where b1 exists.
+**Baselines.** b0 = the control cells copied: 0 on every member by
+construction. b1 = retrieval and transfer: the per-gene fold change of
+the same condition family in other datasets (the nearest time point when
+both carry one; the source's significant genes only, 1.0 elsewhere;
+geometric mean over sources), applied to this context's control cells
+and Poisson-resampled. b1 is scored exactly like a model and its row is
+the bar: where b1 exists a model must exceed b1's score, where it does
+not a model must exceed 0.
 
 **Replicate.** The real perturbed cells are split into two halves five
 times (seeds 0-4); the halves follow animals whenever a group has ≥ 2
 animals, otherwise cells, and the ceilings table says which. Half A is
 scored as a submission against half B with each half's own control cells;
-r is the mean over seeds and its spread is reported.
+r is the mean over seeds and its spread is reported. For the expression
+member the half-vs-half error is divided by 4 (it is the sum of two
+half-depth variances, each twice the full group's), so r is the
+noiseless full-depth floor; the DE members keep the half-depth value,
+which is conservative.
 
 **Excluded genes** (removed from every member; frozen lists):
 
@@ -161,7 +177,7 @@ tables report the mean and the range.
 | G0 corpus | `tables/harmonise/manifest.csv` | ≥ 0.75 M curated mouse cells with raw counts and condition metadata; crosswalk coverage ≥ 90 % at the major level | publish the inventory; stop |
 | G1 benchmark | `tables/bench/ceilings.csv` | ≥ 5 T3 contexts with a computable r and ≥ 2 scorable compartments each | T3 becomes descriptive; T1 carries the benchmark |
 | KR1 embedding | `tables/bench/t1_*.csv` | the model beats scANVI on macro-F1 by ≥ 0.02 **and** on rare-type F1 by ≥ 0.05 on ≥ 2 of 3 held-out mouse atlases, and mixes datasets no worse than Harmony on the observed/expected table | the embedding claim is dropped |
-| KR2 condition effect | `tables/bench/scores_*_summary.csv` | the model's context score (against b1) exceeds the best baseline's by ≥ 0.05 with ≥ 4 of 6 members > 0, on ≥ 2 held-out contexts | the model is a negative result; corpus, crosswalk, benchmark and ceilings are the paper |
+| KR2 condition effect | `tables/bench/scores_*_summary.csv` | the model's context score exceeds b1's (or 0 where no b1 exists) by ≥ 0.05 and the model exceeds that baseline on ≥ 4 of 6 members, on ≥ 2 held-out contexts | the model is a negative result; corpus, crosswalk, benchmark and ceilings are the paper |
 | KR3 scale | the data-size ablation | the primary metrics change by ≥ 0.01 between 200 K and 1 M cells | corpus growth stops; the flat curve is reported |
 | KR4 species | the species ablation | mouse + human beats mouse-only on mouse tasks by ≥ 0.02 at matched compute | mouse-only is the released model |
 | KR5 spatial | the spatial arm | ≥ 0.05 gain on the arbiter or the McKey domains over cell2location/RCTD + BANKSY | spatial arm dropped |
@@ -201,3 +217,5 @@ scANVI rows, the data-size and species curves, and every deviation.
 | Date | Section | Change | Reason | Scores seen before the change? |
 | --- | --- | --- | --- | --- |
 | 2026-11-04 | all | file created as a draft | — | no |
+| 2026-11-04 | §4, §6 | the scale is anchored on b0; b1 is scored as a model and is the bar; the expression replicate is corrected to full depth (÷ 4) | anchoring on b1 made the denominator collapse where the transfer sits near the ceiling (b0 at −34 on one member of the synthetic run); the half-depth expression replicate was noisier than the control copy on small effects | synthetic scores only |
+| 2026-11-04 | §4 | signal gate added (≥ 5 real DE genes after exclusions to score a bundle); PDS requires a pool of ≥ 5 scored bundles | the first synthetic run on Biowulf showed null compartments dominating the aggregate through the empty-set conventions and two-bundle PDS pools | synthetic scores only |

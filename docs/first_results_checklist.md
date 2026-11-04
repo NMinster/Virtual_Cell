@@ -203,8 +203,13 @@ bash biowulf/submit.sh bench
 
 Read it as: r per member is the ceiling a perfect model could reach at
 half depth; b0 is where "no effect" sits; the distance between them is
-the room the benchmark has in that compartment. Compartments where r ≈ b0
-are not informative and the paper says so.
+the room the benchmark has in that compartment. `scored` says whether
+the compartment responded enough (≥ 5 real DE genes after exclusions)
+to be aggregated at all; the rest are listed with their ceilings and
+left out of the scores and the PDS pools, and the paper says so. Expect
+most compartments outside granulosa, theca and stroma to sit below the
+gate in a hormone time course, and the immune and stromal compartments
+to carry ageing.
 
 ## 8. The second result: the baselines scored (minutes)
 
@@ -214,12 +219,13 @@ bash biowulf/run.sh predict --model b0
 bash biowulf/run.sh score --pred $OVARY_FM_RESULTS/predictions/b0.h5ad --name b0
 ```
 
-- [ ] `scores_b0_summary.csv`: 0.000 on every context where b0 is the
-      baseline (a consistency check of the scorer), negative where b1 is.
+- [ ] `scores_b0_summary.csv`: 0.000 on every context (the scale is
+      anchored on the control copy; this is the scorer's consistency check).
 - [ ] Once b1 exists (step 9): `predict --model b1`, `score ... --name b1`;
-      b1 should be ≥ b0 on the DE members in every compartment with ≥ 10
-      real DE genes. Where it is not, the two datasets disagree on the
-      response, which is itself a finding to write down.
+      b1's row is the bar every model has to clear. Expect it well above 0
+      on the DE members in every compartment with ≥ 10 real DE genes; where
+      it is near 0 or negative the two datasets disagree on the response,
+      which is itself a finding to write down.
 
 ## 9. Make b1 exist: a second dataset per family (hours)
 

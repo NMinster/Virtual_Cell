@@ -95,6 +95,11 @@ def build(cfg):
     purity = float(t3.get("reach_purity", 0.9))
     nmae_min = int(de_cfg.get("nmae_min_genes", 10))
     pds_target = float(t3.get("pds", {}).get("target_sum", 5e4))
+    min_pool = int(t3.get("pds", {}).get("min_pool", 5))
+    min_signal = int(t3.get("min_de_genes_to_score", 5))
+    # MSE(half A, half B) = Var(A) + Var(B) = 4 x the variance of the full-depth pseudobulk, so a
+    # noiseless prediction of the full group sits at a quarter of the half-vs-half error
+    depth_corr = float((t3.get("replicate") or {}).get("expr_mse_depth_correction", 4.0))
 
     bundles, cells_by_context, skipped = [], {}, []
     for context in t3["contexts"]:
@@ -181,6 +186,10 @@ def build(cfg):
         b["n_de_real"] = int(real["sig"].sum())
         b["n_de_real_kept"] = int((real["sig"].to_numpy() & keep).sum())
         b["gate_nmae"] = bool(b["n_de_real_kept"] >= nmae_min)
+        # the signal gate: a compartment that does not respond cannot tell models apart; its
+        # ceilings are listed, its members are not aggregated and it is out of the PDS pool
+        b["scored"] = bool(b["n_de_real_kept"] >= min_signal)
+        b["score_reason"] = "" if b["scored"] else f"fewer than {min_signal} real DE genes after exclusions"
         real.to_csv(de_dir / f"{slug(b['bundle_id'])}.csv")
     # b1 needs every bundle's real fold change first
     for b in scorable:
@@ -189,23 +198,25 @@ def build(cfg):
         b["n_b1_sources"] = len(sources)
         b["_fc_b1"] = baselines.combine_fold_changes([s["_fc_real"] for s in sources]) if sources else None
 
-    # the pools for PDS: every bundle of a compartment
+    # the pools for PDS: the SCORED bundles of a compartment
     pools = {}
     for b in scorable:
-        pools.setdefault(b["compartment"], []).append(b)
+        if b["scored"]:
+            pools.setdefault(b["compartment"], []).append(b)
 
     rng = np.random.default_rng(base_seed)
     for b in scorable:
         ctrl, pert, keep, real = b["_ctrl"], b["_pert"], b["_keep"], b["_real_de"]
-        pool = {p["bundle_id"]: p["_pb_real"] - p["_pb_ctrl"] for p in pools[b["compartment"]]}
-        pool_keep = np.logical_and.reduce([p["_keep"] for p in pools[b["compartment"]]])
+        members_of_pool = pools.get(b["compartment"], [])
+        pool = {p["bundle_id"]: p["_pb_real"] - p["_pb_ctrl"] for p in members_of_pool}
+        pool_keep = np.logical_and.reduce([p["_keep"] for p in members_of_pool]) if members_of_pool else b["_keep"]
         # b0: the control copied
         X0 = baselines.b0_cells(ctrl.X)
-        u0 = _members_for(X0, ctrl.X, genes, de_cfg, real, b, pool, pool_keep, purity, nmae_min, pds_target)
+        u0 = _members_for(X0, ctrl.X, genes, de_cfg, real, b, pool, pool_keep, purity, nmae_min, pds_target, min_pool)
         # b1: transfer
         if b["_fc_b1"] is not None:
             X1 = baselines.apply_fold_change(ctrl.X, b["_fc_b1"], rng)
-            u1 = _members_for(X1, ctrl.X, genes, de_cfg, real, b, pool, pool_keep, purity, nmae_min, pds_target)
+            u1 = _members_for(X1, ctrl.X, genes, de_cfg, real, b, pool, pool_keep, purity, nmae_min, pds_target, min_pool)
         else:
             u1 = {m: np.nan for m in MEMBERS}
         # r: half A as the submission, half B as the reference, per seed
@@ -227,24 +238,28 @@ def build(cfg):
             vals["expr_mse"] = expr_mse(pbA, pbB, keep)
             # the pool for the replicate's PDS is the B halves of every bundle in the compartment
             poolB = {}
-            for p in pools[b["compartment"]]:
+            for p in members_of_pool:
                 pc = p["_ctrl"][p["_ctrl"].obs[col] == "B"]
                 pp = p["_pert"][p["_pert"].obs[col] == "B"]
                 if pc.n_obs and pp.n_obs:
                     poolB[p["bundle_id"]] = pseudobulk_log(pp.X, pds_target) - pseudobulk_log(pc.X, pds_target)
-            vals["pds_cosine"] = pds_cosine(pbA - pb_cA, b["bundle_id"], poolB, pool_keep)
+            vals["pds_cosine"] = pds_cosine(pbA - pb_cA, b["bundle_id"], poolB, pool_keep, min_pool)
             for m in MEMBERS:
                 rs[m].append(vals[m])
         for m in MEMBERS:
             b[f"b0_{m}"] = u0[m]
             b[f"b1_{m}"] = u1[m]
             arr = np.asarray([v for v in rs[m] if v is not None and not np.isnan(v)], dtype=float)
+            if m == "expr_mse" and arr.size:
+                b["r_expr_mse_half_depth"] = float(arr.mean())
+                arr = arr / depth_corr
             b[f"r_{m}"] = float(arr.mean()) if arr.size else np.nan
             b[f"r_{m}_sd"] = float(arr.std(ddof=0)) if arr.size else np.nan
             b[f"r_{m}_n"] = int(arr.size)
         print(f"  {b['bundle_id']}: control {b['n_control']} / perturbed {b['n_pert']} cells, "
               f"{b['n_animals_control']}+{b['n_animals_pert']} animals ({b['replicate_level']}), "
-              f"{b['n_de_real']} DE genes; b1 from {b['n_b1_sources']} source(s)")
+              f"{b['n_de_real']} DE genes ({b['n_de_real_kept']} kept; {'scored' if b['scored'] else 'below the signal gate'}); "
+              f"b1 from {b['n_b1_sources']} source(s)")
 
     # persist ---------------------------------------------------------------------------------
     for name, cells in cells_by_context.items():
@@ -265,12 +280,14 @@ def build(cfg):
                                                               encoding="utf-8")
     ceilings = pd.DataFrame(public)
     front = ["bundle_id", "context", "dataset", "family", "condition", "control", "compartment", "scorable", "reason",
-             "n_control", "n_pert", "n_animals_control", "n_animals_pert", "replicate_level", "n_de_real",
-             "n_de_real_kept", "gate_nmae", "n_b1_sources", "b1_sources", "held_out", "time_h", "n_excluded_genes"]
+             "scored", "score_reason", "n_control", "n_pert", "n_animals_control", "n_animals_pert", "replicate_level",
+             "n_de_real", "n_de_real_kept", "gate_nmae", "n_b1_sources", "b1_sources", "held_out", "time_h",
+             "n_excluded_genes"]
     cols = [c for c in front if c in ceilings] + [c for c in ceilings.columns if c not in front]
     ceilings = ceilings[cols]
     ceilings.to_csv(tables / "ceilings.csv", index=False)
-    print(f"  -> {tables / 'ceilings.csv'} ({len(ceilings)} rows; {len(scorable)} scorable)")
+    n_scored = sum(1 for b in scorable if b["scored"])
+    print(f"  -> {tables / 'ceilings.csv'} ({len(ceilings)} rows; {len(scorable)} built; {n_scored} scored)")
     return ceilings
 
 
@@ -284,13 +301,14 @@ def _json_default(o):
     return str(o)
 
 
-def _members_for(X_pred, X_ctrl, genes, de_cfg, real, b, pool, pool_keep, purity, nmae_min, pds_target) -> dict:
+def _members_for(X_pred, X_ctrl, genes, de_cfg, real, b, pool, pool_keep, purity, nmae_min, pds_target,
+                 min_pool: int = 2) -> dict:
     keep = b["_keep"]
     pred_de = de_table(X_pred, X_ctrl, genes, de_cfg, tested_mask=real["tested"].to_numpy())
     vals = de_members(pred_de, real, keep, purity, nmae_min)
     pb_pred = pseudobulk_log(X_pred, pds_target)
     vals["expr_mse"] = expr_mse(pb_pred, b["_pb_real"], keep)
-    vals["pds_cosine"] = pds_cosine(pb_pred - b["_pb_ctrl"], b["bundle_id"], pool, pool_keep)
+    vals["pds_cosine"] = pds_cosine(pb_pred - b["_pb_ctrl"], b["bundle_id"], pool, pool_keep, min_pool)
     return vals
 
 
@@ -337,8 +355,8 @@ def score(cfg, pred_path: Path, name: str, scorer: str = "lite") -> pd.DataFrame
     purity = float(t3.get("reach_purity", 0.9))
     nmae_min = int(de_cfg.get("nmae_min_genes", 10))
     pds_target = float(t3.get("pds", {}).get("target_sum", 5e4))
+    min_pool = int(t3.get("pds", {}).get("min_pool", 5))
     clamp = t3.get("clamp") or {}
-    policy = t3.get("baseline", "b1_else_b0")
 
     reference = load_reference(cfg)
     genes = pd.Index(reference["genes"])
@@ -356,6 +374,9 @@ def score(cfg, pred_path: Path, name: str, scorer: str = "lite") -> pd.DataFrame
         print(f"  {len(genes) - len(common)} corpus genes are absent from the prediction (zero)")
 
     # real deltas per pool, from the bundle cells
+    bundles = {bid: it for bid, it in bundles.items() if it["meta"].get("scored", True)}
+    if not bundles:
+        raise ValueError("no bundle passes the signal gate; nothing to score")
     pool_delta, pool_keep = {}, {}
     pb_cache = {}
     for bid, item in bundles.items():
@@ -382,23 +403,19 @@ def score(cfg, pred_path: Path, name: str, scorer: str = "lite") -> pd.DataFrame
         pb_p = pseudobulk_log(X_pred, pds_target)
         vals["expr_mse"] = expr_mse(pb_p, pb_r, keep)
         comp = meta["compartment"]
-        vals["pds_cosine"] = pds_cosine(pb_p - pb_c, bid, pool_delta[comp], pool_keep[comp])
+        vals["pds_cosine"] = pds_cosine(pb_p - pb_c, bid, pool_delta[comp], pool_keep.get(comp, keep), min_pool)
         row = {"bundle_id": bid, "context": meta["context"], "dataset": meta["dataset"], "family": meta["family"],
                "condition": meta["condition"], "compartment": comp, "n_pred_cells": int(mask.sum()),
                "n_pert": meta["n_pert"], "n_control": meta["n_control"], "replicate_level": meta.get("replicate_level"),
                "gate_nmae": meta.get("gate_nmae"), "n_pred_de": vals["n_pred_de"], "n_real_de": vals["n_real_de"]}
-        has_b1 = meta.get("n_b1_sources", 0) > 0 and not _isnan(meta.get("b1_expr_mse"))
-        use = "b1" if (policy == "b1_else_b0" and has_b1) else "b0"
-        row["baseline_used"] = use
+        # the scale is anchored on b0 (the control copied: 0) and the replicate (1); b1 is scored
+        # like any model and its row is the bar a model has to clear (docs/preregistration.md 4)
+        row["b1_available"] = bool(meta.get("n_b1_sources", 0) > 0 and not _isnan(meta.get("b1_expr_mse")))
         ss = []
         for m in MEMBERS:
             u = vals[m]
             row[f"u_{m}"] = u
-            s_b0 = rescale(m, u, meta.get(f"b0_{m}"), meta.get(f"r_{m}"), clamp)
-            s_b1 = rescale(m, u, meta.get(f"b1_{m}"), meta.get(f"r_{m}"), clamp) if has_b1 else np.nan
-            row[f"s_b0_{m}"] = s_b0
-            row[f"s_b1_{m}"] = s_b1
-            s = s_b1 if use == "b1" else s_b0
+            s = rescale(m, u, meta.get(f"b0_{m}"), meta.get(f"r_{m}"), clamp)
             row[f"s_{m}"] = s
             if not _isnan(s):
                 ss.append(s)
@@ -407,7 +424,7 @@ def score(cfg, pred_path: Path, name: str, scorer: str = "lite") -> pd.DataFrame
         row["bundle_score"] = float(np.mean(ss)) if ss else np.nan
         rows.append(row)
     if not rows:
-        raise ValueError("the prediction covers none of the scorable bundles")
+        raise ValueError("the prediction covers none of the scored bundles")
     frame = pd.DataFrame(rows)
     tables = tables_dir(cfg, "bench")
     frame.to_csv(tables / f"scores_{slug(name)}.csv", index=False)

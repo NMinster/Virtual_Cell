@@ -216,7 +216,7 @@ def write_side_files(out: Path, specs: list[dict]):
     bench = dict(repo_bench)
     bench["t1"] = dict(repo_bench["t1"], min_cells_per_type=10, max_cells_per_class=800,
                        test_only=["synth_mouse_comp"])
-    bench["t3"] = dict(repo_bench["t3"], min_cells_hard=40)
+    bench["t3"] = dict(repo_bench["t3"], min_cells_hard=40, min_de_genes_to_score=4)
     bench["t3"]["contexts"] = [
         {"name": "synth_isola_ageing", "dataset": "synth_isola", "family": "ageing", "control": "age_3mo",
          "perturbed": ["age_9mo"]},

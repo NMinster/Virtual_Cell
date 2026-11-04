@@ -23,11 +23,14 @@ Conventions kept from the specification:
   confidence, with >= 90 % sign agreement, over n_real;
   ``de_sig_jaccard`` on the significant sets (empty union = 1);
   ``de_lfc_nmae`` over the real DE genes when there are >= 10 of them;
-* the replicate is measured at HALF depth and this implementation carries no
-  jackknife correction for it, so on a small effect the half-vs-half expression
-  error can exceed the control copy's (b0 < r); Arc's expression member is
-  noise-corrected, which is one reason to run cell-eval2 beside this scorer;
-* every member is rescaled s = (u - b) / (r - b); the expression member is
+* the replicate is measured at HALF depth. For the expression member the
+  half-vs-half error is divided by 4 (MSE(A, B) = Var(A) + Var(B), each half
+  carrying twice the full group's pseudobulk variance), which puts r at the
+  noiseless full-depth floor; the DE members keep the half-depth value, which
+  is conservative (a model can score above 1). Arc's expression member uses a
+  jackknife instead, one reason to run cell-eval2 beside this scorer;
+* every member is rescaled s = (u - b) / (r - b) with b the control copy (b0);
+  the transfer baseline b1 is scored as a model and is the bar; the expression member is
   clamped to [0, 1] and the NMAE member floored at -6; nothing else is
   clipped.
 """
@@ -161,10 +164,12 @@ def cosine_distance(a: np.ndarray, b: np.ndarray) -> float:
     return float(1.0 - np.dot(a, b) / (na * nb))
 
 
-def pds_cosine(delta_pred: np.ndarray, true_id: str, real_deltas: dict, keep: np.ndarray) -> float:
-    """Mid-rank of the true bundle among the pool by cosine distance; zero delta -> 0.5."""
+def pds_cosine(delta_pred: np.ndarray, true_id: str, real_deltas: dict, keep: np.ndarray,
+               min_pool: int = 2) -> float:
+    """Mid-rank of the true bundle among the pool by cosine distance; zero delta -> 0.5;
+    NaN when the pool is smaller than min_pool (a two-bundle pool can only say 0, 0.5 or 1)."""
     ids = list(real_deltas)
-    if len(ids) < 2 or true_id not in real_deltas:
+    if len(ids) < max(2, int(min_pool)) or true_id not in real_deltas:
         return np.nan
     if not np.any(delta_pred[keep]):
         return 0.5

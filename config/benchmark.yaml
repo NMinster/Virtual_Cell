@@ -31,7 +31,11 @@ t3:
   compartment_key: major_type
   compartments: [Granulosa, Luteal, Theca, Stromal, Endothelial, Epithelial, Immune, Oocytes]
   min_cells: 400                   # Arc's 400 per perturbation; the gate below is what the scaffold enforces
-  min_cells_hard: 50               # below this a (context, condition, compartment) is listed, not scored
+  min_cells_hard: 50               # below this a (context, condition, compartment) is listed, not built
+  # the signal gate: a bundle is scored (and enters the PDS pool) only with at least this many real
+  # DE genes after exclusions; below it the compartment did not respond enough to tell models apart,
+  # the empty-set conventions make the control copy look perfect, and its ceilings are listed only
+  min_de_genes_to_score: 5
   min_animals_for_cross_animal_halves: 2
   n_splits: 5
   base_seed: 0
@@ -43,11 +47,16 @@ t3:
     nmae_min_genes: 10             # the fold-change member needs >= 10 real DE genes
   pds:
     target_sum: 5.0e4              # group-summed counts -> TS -> log1p; cosine distance
-    pool: compartment              # the rank runs over every (context, condition) of the compartment
+    pool: compartment              # the rank runs over the scored (context, condition) bundles of the compartment
+    min_pool: 5                    # fewer bundles than this and the member is NaN (a 2-bundle pool can only say 0, 0.5, 1)
   members: [pds_cosine, expr_mse, de_direction_fidelity, de_direction_reach, de_sig_jaccard, de_lfc_nmae]
   reach_purity: 0.9
   clamp: {expr_mse: [0, 1], de_lfc_nmae_floor: -6}
-  baseline: b1_else_b0             # s is against b1 (transfer) when a source exists, else b0 (control copy); both reported
+  baseline: b0                     # s is anchored on the control copy (0) and the replicate (1); b1 (transfer) is
+                                   # scored like a model and its row is the bar (anchoring on b1 blows the scale up
+                                   # wherever the transfer already sits near the ceiling)
+  replicate:
+    expr_mse_depth_correction: 4   # MSE(half A, half B) = 4 x the full-depth pseudobulk variance: r at the noiseless floor
 
   # genes excluded from every member, per condition family: the ones that
   # DEFINE the condition and would leak it (Arc excludes the knockdown

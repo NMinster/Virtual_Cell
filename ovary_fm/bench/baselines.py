@@ -29,11 +29,18 @@ def combine_fold_changes(fcs: list[np.ndarray]) -> np.ndarray:
 
 
 def apply_fold_change(X_control, fc: np.ndarray, rng: np.random.Generator):
-    """Poisson-resample each control cell at rate count x fold change: integer
-    counts with the control's own sparsity and depth structure."""
+    """Integer counts with the control's own sparsity and depth structure: a
+    gene whose fold change is 1 keeps each cell's count exactly; a changed gene
+    is Poisson-resampled at count x fold change. Resampling only what changes
+    keeps the transfer from paying an expression-error penalty on the genes it
+    leaves alone (the sampling step is where the integer-count member is won
+    or lost)."""
     X = sp.csr_matrix(X_control, dtype=np.float64)
     out = X.multiply(fc[np.newaxis, :]).tocsr()
-    out.data = rng.poisson(out.data).astype(np.float32)
+    changed = np.isin(out.indices, np.where(fc != 1.0)[0])
+    if changed.any():
+        out.data[changed] = rng.poisson(out.data[changed])
+    out.data = out.data.astype(np.float32)
     out.eliminate_zeros()
     return out
 

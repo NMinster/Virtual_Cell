@@ -18,9 +18,15 @@ def md_table(frame: pd.DataFrame, max_rows: int = 60, floatfmt: str = "{:.3f}") 
         if frame[col].dtype.kind == "f":
             frame[col] = frame[col].map(lambda v: "" if pd.isna(v) else floatfmt.format(v))
     cols = [str(c) for c in frame.columns]
+
+    def cell(v) -> str:
+        if v is None or (isinstance(v, float) and np.isnan(v)) or str(v) in ("nan", "None"):
+            return ""
+        return str(v).replace("|", "\\|")      # bundle ids carry '|'; a bare pipe breaks the table
+
     lines = ["| " + " | ".join(cols) + " |", "| " + " | ".join("---" for _ in cols) + " |"]
     for _, row in frame.iterrows():
-        lines.append("| " + " | ".join(str(v) for v in row.tolist()) + " |")
+        lines.append("| " + " | ".join(cell(v) for v in row.tolist()) + " |")
     return "\n".join(lines) + "\n"
 
 
@@ -50,22 +56,28 @@ def run(cfg):
                      f"{len(unmapped)} unmapped (kept as text, out of the scoring).\n\n" + md_table(unmapped))
     ceilings = _read(tables / "bench" / "ceilings.csv")
     if ceilings is not None:
-        show = [c for c in ("bundle_id", "scorable", "reason", "n_control", "n_pert", "n_animals_control", "n_animals_pert",
-                            "replicate_level", "n_de_real", "n_de_real_kept", "gate_nmae", "n_b1_sources") if c in ceilings]
-        parts.append("## T3 bundles and ceilings\n\n" + md_table(ceilings[show]))
+        show = [c for c in ("bundle_id", "scorable", "reason", "scored", "score_reason", "n_control", "n_pert",
+                            "n_animals_control", "n_animals_pert", "replicate_level", "n_de_real", "n_de_real_kept",
+                            "gate_nmae", "n_b1_sources") if c in ceilings]
+        n_built = int(ceilings["scorable"].sum()) if "scorable" in ceilings else len(ceilings)
+        n_scored = int(ceilings["scored"].sum()) if "scored" in ceilings else n_built
+        parts.append(f"## T3 bundles and ceilings\n\n{len(ceilings)} bundles listed, {n_built} built (enough cells), "
+                     f"{n_scored} scored (enough real DE genes after exclusions to carry a signal).\n\n"
+                     + md_table(ceilings[show], max_rows=200))
         members = [c for c in ceilings.columns if c.startswith("r_") and not c.endswith(("_sd", "_n"))]
         if members:
-            rc = ceilings[ceilings.get("scorable", True) == True]
+            rc = ceilings[ceilings["scored"] == True] if "scored" in ceilings else ceilings
             cols = ["bundle_id"]
             for m in members:
-                cols += [c for c in (m.replace("r_", "b0_"), m.replace("r_", "b1_"), m) if c in rc]
-            parts.append("### Baselines and replicate per member (raw u)\n\n" + md_table(rc[cols]))
+                stem = m[2:]
+                cols += [c for c in (f"b0_{stem}", f"b1_{stem}", m) if c in rc]
+            parts.append("### Baselines and replicate per member (raw u), scored bundles\n\n" + md_table(rc[cols], max_rows=200))
     scores = sorted((tables / "bench").glob("scores_*_summary.csv")) if (tables / "bench").exists() else []
     if scores:
         frames = [pd.read_csv(p) for p in scores]
         allscores = pd.concat(frames, ignore_index=True)
         wide = allscores.pivot_table(index="context", columns="model", values="context_score")
-        parts.append("## T3 scores (s against b1 where a source exists, else b0; 0 = baseline, 1 = replicate)\n\n"
+        parts.append("## T3 scores (0 = the control copied, 1 = the cross-animal replicate; the b1 row is the bar)\n\n"
                      + md_table(wide.reset_index()))
     t1s = sorted((tables / "bench").glob("t1_*.csv")) if (tables / "bench").exists() else []
     t1s = [p for p in t1s if not p.name.endswith("_per_type.csv")]
@@ -79,12 +91,15 @@ def run(cfg):
     if fmc.exists():
         parts.append(f"## Embeddings compared\n\nSee `{fmc}`.\n")
     parts.append("## How to read this\n\n"
-                 "* A T3 score of 0 is the baseline the bundle was scored against (b1 when another dataset carried the same "
-                 "condition family, else the control copied); 1 is the cross-animal split-half replicate. Values above 1 and "
-                 "below 0 are reported, not clipped.\n"
+                 "* A T3 score of 0 is the control copied (no effect); 1 is the cross-animal split-half replicate. The b1 row "
+                 "(the same condition family transferred from other datasets) is the bar a model must clear where it exists. "
+                 "Values above 1 and below 0 are reported, not clipped.\n"
                  "* `replicate_level = cells` means a group had a single animal, so r is a technical, not biological, ceiling.\n"
                  "* `gate_nmae = False` means fewer than the required real DE genes after exclusions; the fold-change member "
                  "is absent for that bundle.\n"
+                 "* `scored = False` means the compartment did not respond enough (too few real DE genes after exclusions) to "
+                 "tell models apart; its ceilings are listed, its members are not aggregated, and it is out of the PDS pool.\n"
+                 "* `pds_cosine` is blank when its pool (the scored bundles of the compartment) is smaller than `pds.min_pool`.\n"
                  "* The stub model is plumbing. Its score means the pipeline runs, nothing more.\n")
     out.write_text("\n".join(parts), encoding="utf-8")
     print(f"  -> {out}")

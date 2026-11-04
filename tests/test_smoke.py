@@ -45,7 +45,10 @@ def test_config_carries_the_plan():
     assert cfg["benchmark"]["t3"]["de"]["nmae_min_genes"] == 10
     assert cfg["benchmark"]["t3"]["members"] == ["pds_cosine", "expr_mse", "de_direction_fidelity",
                                                  "de_direction_reach", "de_sig_jaccard", "de_lfc_nmae"]
-    assert cfg["benchmark"]["t3"]["baseline"] == "b1_else_b0"
+    assert cfg["benchmark"]["t3"]["baseline"] == "b0"                        # the scale is anchored on the control copy
+    assert cfg["benchmark"]["t3"]["min_de_genes_to_score"] == 5             # the signal gate
+    assert cfg["benchmark"]["t3"]["pds"]["min_pool"] == 5
+    assert cfg["benchmark"]["t3"]["replicate"]["expr_mse_depth_correction"] == 4
     assert "Egr1" in cfg["benchmark"]["t3"]["exclude_genes"]["ovulation"]
     assert cfg["benchmark"]["margins"]["t3_context_score"] == 0.05
     assert cfg["crosswalk"]["major_types"] == ["Oocytes", "Granulosa", "Luteal", "Theca", "Stromal", "Endothelial",
@@ -214,10 +217,12 @@ def test_scores_are_anchored(synthetic):
     b0 = pd.read_csv(tables / "scores_b0.csv")
     b1 = pd.read_csv(tables / "scores_b1.csv")
     stub = pd.read_csv(tables / "scores_stub.csv")
-    # b0 scored against itself is exactly 0 on every member where b0 is the baseline
-    own = b0[b0["baseline_used"] == "b0"]
+    # b0 scored against itself is exactly 0 on every deterministic member (the scale is anchored on it)
     for m in ("expr_mse", "de_direction_fidelity", "de_sig_jaccard"):
-        assert np.allclose(own[f"s_b0_{m}"].dropna(), 0.0, atol=1e-9)
+        assert np.allclose(b0[f"s_{m}"].dropna(), 0.0, atol=1e-9)
+    assert np.allclose(b0["bundle_score"].dropna(), 0.0, atol=1e-9)
+    # b1 is scored as a model: positive where a source carries the same response
+    assert (b1["bundle_score"] > 0).mean() >= 0.75
     # where a transfer source exists the transfer beats the control copy on the DE members
     merged = b1.merge(b0, on="bundle_id", suffixes=("_b1", "_b0"))
     merged = merged[merged["n_real_de_b1"] >= 10]
@@ -228,7 +233,8 @@ def test_scores_are_anchored(synthetic):
     assert (merged["u_expr_mse_b1"] <= merged["u_expr_mse_b0"] * 1.5).all()
     # the stub covers every scorable bundle, and the summary has one row per context plus OVERALL
     ceilings = pd.read_csv(tables / "ceilings.csv")
-    assert set(stub["bundle_id"]) == set(ceilings.loc[ceilings["scorable"], "bundle_id"])
+    assert set(stub["bundle_id"]) == set(ceilings.loc[ceilings["scored"] == True, "bundle_id"])
+    assert (ceilings["scored"] == True).sum() < ceilings["scorable"].sum()      # the gate removes the null compartments
     summary = pd.read_csv(tables / "scores_stub_summary.csv")
     assert summary["context"].iloc[-1] == "OVERALL" and summary.shape[0] == 5
 
