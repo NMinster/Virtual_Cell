@@ -19,6 +19,10 @@
 #     squeue -u $USER; tail -f logs/<stage>_<jobid>.out; scancel <jobid>
 # Resources per stage can be overridden for one submission:
 #     SUBMIT_MEM=200g SUBMIT_CPUS=16 SUBMIT_TIME=36:00:00 bash biowulf/submit.sh bench
+#     SUBMIT_PARTITION=quick bash biowulf/submit.sh fm --tool scprint2   # a100 nodes, 4 h cap, starts sooner
+# Biowulf, 2026-11-04 (batchlim, freen): gpu partition 320 A100s on 80 nodes of 4 GPUs, 64 CPUs,
+# 243 GB and 3.2 TB SSD each, 56 GPUs per user, walltime 2 h default / 10 d max; `quick` has
+# 12 of the same nodes at a 4 h cap; `gpuh200` 8 GPUs per user, 1 d; norm 10 d max.
 # =============================================================================
 # CRLF guard: a checkout made on Windows (core.autocrlf=true) arrives with \r line
 # endings and bash dies at `set -euo pipefail` with "set: pipefail\r: invalid option
@@ -74,6 +78,10 @@ submit() {
     read -r cpus mem time partition gres <<< "$(resources "${stages}" "$*")"
     cpus="${SUBMIT_CPUS:-${cpus}}"; mem="${SUBMIT_MEM:-${mem}}"
     time="${SUBMIT_TIME:-${time}}"; partition="${SUBMIT_PARTITION:-${partition}}"
+    # `quick` (a100 nodes, 4 h cap) is the partition for short GPU tests: cap the walltime there
+    if [[ "${partition}" == "quick" ]]; then
+        case "${time}" in 0[0-3]:*) ;; *) time="04:00:00" ;; esac
+    fi
     local extra=()
     [[ -n "${gres:-}" ]] && extra+=("${gres}")
     if [[ -n "${dep}" ]]; then

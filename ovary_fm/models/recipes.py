@@ -44,7 +44,10 @@ Written by `ovary-fm train --arm {arm}` on {stamp}. Nothing has been run.
 * template: `{template}` (copied here as `config.yml` with the paths filled in)
 * environment: `{env}` (`bash biowulf/setup_env.sh --train {setup}`)
 * submit: `sbatch {out}/train.sbatch` once `config.yml` has been checked
-  against the tool's current documentation ({docs})
+  against the tool's current documentation ({docs}). Whole a100 nodes are
+  rarely free on Biowulf (0 of 80 on 2026-11-04, with single GPUs free):
+  a 4-GPU job queues; the smoke test runs on one GPU in `quick`
+  (`sbatch --partition=quick --gres=gpu:a100:1 --time=04:00:00 ...`).
 
 Before submitting (docs/first_results_checklist.md, step 10):
 
@@ -80,11 +83,13 @@ def write(cfg, arm: str) -> Path:
                    f"cd {src}\n"
                    f"scprint2 fit --config config/base_v2.yml --config config/pretrain_medium.yml "
                    f"--config {out}/config.yml --ckpt_path $HF_HOME/scprint/{spec.get('base_checkpoint', 'medium-v2')}.ckpt")
-        docs, setup, gpus, cpus, mem, time = "cantinilab/scPRINT-2 docs/pretrain.md and config/", "scprint2", 4, 16, "360g", "3-00:00:00"
+        # a Biowulf a100 node: 4 GPUs, 64 CPUs, 243 GB in all (freen, 2026-11-04), so the maintainers'
+        # 90 GB per GPU does not fit; 230 GB and 32 CPUs for the four cards
+        docs, setup, gpus, cpus, mem, time = "cantinilab/scPRINT-2 docs/pretrain.md and config/", "scprint2", 4, 32, "230g", "3-00:00:00"
     else:
         command = (f"composer scripts/train.py {out}/config.yml   # from a clone of tahoebio/tahoe-x1; "
                    f"transcribe config.yml into their configs/ format first")
-        docs, setup, gpus, cpus, mem, time = "tahoebio/tahoe-x1 README and configs/", "tahoe", 4, 16, "240g", "2-00:00:00"
+        docs, setup, gpus, cpus, mem, time = "tahoebio/tahoe-x1 README and configs/", "tahoe", 4, 32, "230g", "2-00:00:00"
     (out / "train.sbatch").write_text(SBATCH.format(arm=f"arm_{arm}", gpus=gpus, cpus=cpus, mem=mem, time=time, out=out,
                                                     repo=REPO_ROOT, env=spec["env"], command=command), encoding="utf-8")
     (out / "README.md").write_text(README.format(arm=arm, arm_upper=arm.upper(),

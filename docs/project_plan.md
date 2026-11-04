@@ -119,7 +119,7 @@ Everything below is written down before any model is trained, in
 | Base model, arm B | ≤ 30 M parameters from scratch in the scPRINT-2 small or Tahoe-x1 70 M configuration | the scaling literature says capacity buys little at 1-2 M cells; Apache-2 (Tahoe-x1) or GPL-3 (scPRINT-2) |
 | Primary baseline, arm C | scVI/scANVI on the same corpus, plus a Richter-style masked-autoencoder MLP | the 2026 benchmarks say this is the model to beat |
 | Excluded bases | Arc STATE weights (non-commercial licence that explicitly covers fine-tunings and excludes industry-sponsored research), scFoundation weights (same class), scGPT and Geneformer checkpoints (human-only vocabularies), UCE and TranscriptFormer (inference-only code) | licence or vocabulary; all three generalists stay as the zero-shot arm through the existing `fm` stage |
-| Compute | NIH Biowulf gpu partition, one 4 × A100 node per run | the maintainers' scPRINT-2 recipe is 4 × A40-40 GB with 16 CPU and 90 GB RAM per GPU |
+| Compute | NIH Biowulf gpu partition, one 4 × A100 node per run: 64 CPUs, 243 GB, 3.2 TB SSD (320 A100s on 80 nodes; 56 GPUs per user; 10-day walltime) | the maintainers' scPRINT-2 recipe is 4 × A40-40 GB with 16 CPU and 90 GB RAM per GPU; a Biowulf node gives the four cards 60 GB each, so the data loader's prefetch is sized to that; whole nodes are rarely free, so 4-GPU runs queue and the single-GPU tests go to `quick` |
 
 **Pre-registered metrics, baselines, margins and kill rules.** Section 8
 has the table. The rule of the September memo (`fm.compare` in
@@ -348,7 +348,10 @@ where the integer-count member is won or lost.
 Budget: roughly 2,500 A100-hours in all (12 arm-B runs for the size
 curve, four arm-A runs, the species and modality runs, inference and the
 baselines). On one 4 × A100 node that is about four months of wall time
-if runs are serialised, or weeks if Biowulf allows two nodes at once.
+if runs are serialised; the per-user limit of 56 GPUs allows several
+nodes at once, but whole A100 nodes are rarely free, so the realistic
+pace is set by the queue and the ablation runs should be submitted as
+independent single-node jobs that can start whenever a node frees.
 
 ### 6.3 Engineering
 

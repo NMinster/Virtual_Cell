@@ -120,10 +120,18 @@ say. Settled:
   checkpoint can be released under Apache-2.0 with attribution. The code
   stays GPL-3. Nothing to ask anyone.
 
-Still to do, no compute:
+- Biowulf (`batchlim`, `freen`, 2026-11-04): the gpu partition has 320
+  A100s on 80 nodes of 4 GPUs, 64 CPUs, 243 GB and 3.2 TB SSD each; 56
+  GPUs per user; walltime 2 h by default, 10 days at most. Whole nodes
+  are rarely free (0 of 80 that day, 13 single GPUs free), so 4-GPU jobs
+  queue. `quick` has 12 of the same nodes with a 4 h cap, right for the
+  single-GPU tests; `gpuh200` offers 8 GPUs per user for a day. `freen`
+  does not print memory per card; `nvidia-smi` in an `sinteractive
+  --gres=gpu:a100:1` says whether they are 40 or 80 GB. The arm A and B
+  sbatch scripts ask for 230 GB and 32 CPUs on one node, the most the
+  node allows.
 
-- [ ] Biowulf: `freen | grep a100` and `batchlim` for the current A100
-      memory mix and walltime limits.
+Still to do, no compute: nothing. The remaining items are the searches below.
 
 Run the searches the memo never got to, and record "found / not found"
 with the query in the memo's section 8: PCOS, POI and chemotherapy mouse
@@ -366,10 +374,12 @@ bash biowulf/run.sh t1 --rep $OVARY_FM_RESULTS/train/arm_c/embedding.parquet
       `base_v2.yml` and `pretrain_medium.yml`; check its keys against the
       clone's `config/` folder, point their periodic `test()` at the test
       files on hf.co/jkobject/scPRINT-2 or disable it (their issue #12),
-      then in `sinteractive --gres=gpu:a100:1 --mem=90g --cpus-per-task=16`
-      run a few hundred steps on the Isola collection. Record the step time
-      and the memory; that is the number the 200-500 A100-hour estimate is
-      checked against.
+      then run a few hundred steps on the Isola collection on one GPU in
+      the `quick` partition (`sbatch --partition=quick --gres=gpu:a100:1
+      --mem=60g --cpus-per-task=16 --time=04:00:00`, or `sinteractive`
+      with the same resources). Record the step time and the memory; that
+      is the number the 200-500 A100-hour estimate is checked against,
+      and 60 GB per GPU is what a shared node leaves.
 - [ ] `bash biowulf/setup_env.sh --arc`, then in the `ovary_fm_arc` env
       `cell-eval2 run --help`. Align the flags in
       `ovary_fm/bench/runner.py::_score_cell_eval2` with what you see,
