@@ -1,0 +1,246 @@
+# =====================================================================
+# Virtual_Cell :: the corpus manifest
+# ---------------------------------------------------------------------
+# One entry per dataset. `fetch` downloads what `source` says into
+# data/raw/<name>/ (a cellxgene_collection source goes through the Census
+# API; a url source is a plain download through the proxy; local is read
+# in place; scbasecount is an h5ad in the Arc bucket, see
+# scripts/scbasecount_metadata.py). `qc` reads `path` (an .h5ad, a 10x
+# .h5, an mtx folder or a csv count matrix; a Seurat .rds is converted
+# first with R/rds_to_mtx.R) and writes data/corpus/qc/<name>.h5ad with
+# the obs schema in docs/project_plan.md section 4.2.
+#
+# Fields:
+#   enabled          only enabled datasets are fetched, QC'd and pooled
+#   tier             A curated atlas or condition study; B scBaseCount; C human; D other species
+#   suspension_type  cell | nucleus | null (inferred from the tells in qc)
+#   label_key        obs column with the authors' labels (the crosswalk maps it)
+#   animal_key       obs column naming the animal (the replicate unit); null = one animal per file
+#   condition        key: obs column; map: raw value -> condition name; family; control;
+#                    time_h / age_days per condition (optional); value: a constant when there is no column
+#   held_out         never pooled into corpus.h5ad; written as its own shard (the own data)
+#   status           ready | fill_in: what still has to be filled from the download
+#
+# Counts marked † are from the research memo's search snippets and are
+# confirmed on download (docs/first_results_checklist.md, step 4).
+# =====================================================================
+datasets:
+
+  # --- Tier A, mouse ----------------------------------------------------------
+
+  - name: isola2024
+    enabled: true
+    tier: A
+    species: mouse
+    suspension_type: cell
+    assay: "10x 3' v3"
+    strain: C57BL/6J
+    sex: female
+    source:
+      type: cellxgene_collection
+      collection_id: 350fe77e-cc64-482e-a42a-18bec9e4a629
+      author_h5ad: true            # the curated h5ad per dataset carries the authors' labels (cluster.names)
+      accession: GSE232309
+    path: data/raw/isola2024/isola2024.h5ad
+    label_key: cluster.names       # 16 author labels; Census `cell_type` has ten and folds Epithelium B (lymphatic endothelium)
+    gene_key: feature_name         # var column with symbols when var_names are Ensembl ids
+    animal_key: donor_id
+    condition:
+      key: development_stage
+      map: {"3-month-old stage": age_3mo, "9-month-old stage": age_9mo}
+      family: ageing
+      control: age_3mo
+      age_days: {age_3mo: 90, age_9mo: 270}
+    status: ready
+    notes: "Isola/Ocañas et al. 2024, Nature Aging 4:145. 14,349 cells, four ovaries per age. Already the reference atlas of Mouse_Compensatory."
+
+  - name: morris2022
+    enabled: true
+    tier: A
+    species: mouse
+    suspension_type: cell
+    assay: "10x"
+    strain: null
+    sex: female
+    source:
+      type: url
+      accession: GSE192722
+      urls: []                     # fill from https://ftp.ncbi.nlm.nih.gov/geo/series/GSE192nnn/GSE192722/suppl/ (checklist step 3)
+    path: data/raw/morris2022      # the folder the files land in; qc reads an h5ad / mtx / csv inside it
+    label_key: Level1              # Level0 (six types) or Level1 (follicle and corpus luteum states)
+    gene_key: null
+    animal_key: null               # fill in: the per-mouse column once the object is read
+    condition:
+      key: stage                   # fill in: the column with proestrus / estrus / metestrus / diestrus / PMSG-hCG 8 h / lactation
+      map: {proestrus: proestrus, estrus: estrus, metestrus: metestrus, diestrus: diestrus,
+            "pmsg_hcg_8h": hcg_8h, lactating: lactating}
+      family: cycle
+      control: diestrus
+      time_h: {hcg_8h: 8}
+    status: fill_in
+    notes: "Morris, Meinsohn et al. 2022, eLife 11:e77239, the cycling adult ovary (Pépin lab). >34,000† cells; the 28,014-cell reused object is the cell2location reference of Mantri 2024. The only estrous-staged whole-ovary atlas."
+
+  - name: huang2025
+    enabled: true
+    tier: A
+    species: mouse
+    suspension_type: cell
+    assay: "10x"
+    strain: CD-1
+    sex: female
+    source:
+      type: url
+      accession: GSE294534
+      urls: []                     # fill from the GEO supplementary folder (checklist step 3)
+    path: data/raw/huang2025
+    label_key: null                # fill in
+    gene_key: null
+    animal_key: null               # fill in: n = 3 per time point
+    condition:
+      key: timepoint               # fill in
+      map: {"0h": hcg_0h, "4h": hcg_4h, "12h": hcg_12h}
+      family: ovulation
+      control: hcg_0h
+      time_h: {hcg_0h: 0, hcg_4h: 4, hcg_12h: 12}
+    status: fill_in
+    notes: "Huang et al. 2025, PLOS Biology (Shalek lab): PMSG/hCG, 0 / 4 / 12 h post-hCG, 25,714† cells, paired MERFISH of the contralateral ovary."
+
+  - name: wang_suh_estropause
+    enabled: false
+    tier: A
+    species: mouse
+    suspension_type: cell
+    assay: "10x"
+    sex: female
+    source: {type: url, accession: GSE267729, urls: []}
+    path: data/raw/wang_suh_estropause
+    label_key: null
+    animal_key: null
+    condition:
+      key: group
+      map: {young: young, peri_regular: peri_regular, peri_irregular: peri_irregular, post: post_estropausal}
+      family: ageing
+      control: young
+    status: fill_in
+    notes: "Wang, Suh et al., estropausal transition (bioRxiv 2024; PNAS 2026). Estrous-staged; the accession is from a search snippet."
+
+  - name: ovulation_exvivo_2024
+    enabled: false
+    tier: A
+    species: mouse
+    suspension_type: cell
+    source: {type: scbasecount, srx: [SRX23566711, SRX23566738], urls: []}   # the 0/3/6/9/12 h series, incl. in vitro arms; expand from scripts/scbasecount_metadata.py
+    path: data/raw/ovulation_exvivo_2024
+    label_key: null
+    animal_key: null
+    condition:
+      key: time_h
+      map: {"0": hcg_0h, "3": hcg_3h, "6": hcg_6h, "9": hcg_9h, "12": hcg_12h}
+      family: ovulation
+      control: hcg_0h
+      time_h: {hcg_0h: 0, hcg_3h: 3, hcg_6h: 6, hcg_9h: 9, hcg_12h: 12}
+    status: fill_in
+    notes: "Nature Cell Biology 2024 ex vivo follicle series; confirm the GEO series and the sample-to-time mapping from the SRA records."
+
+  - name: gaylord2025_mouse
+    enabled: false
+    tier: A
+    species: mouse
+    source: {type: url, accession: GSE290743, urls: []}
+    path: data/raw/gaylord2025_mouse
+    label_key: null
+    animal_key: null
+    condition: {key: age_group, map: {}, family: ageing, control: young}
+    status: fill_in
+    notes: "Gaylord et al. 2025, Science 390 (Laird lab): mouse and human across age, ~100,000† cells, 11 types incl. glia. The linked accession is the human object; confirm the mouse one."
+
+  - name: benayoun_vcd
+    enabled: false
+    tier: A
+    species: mouse
+    source: {type: url, accession: PRJNA863443, urls: []}
+    path: data/raw/benayoun_vcd
+    label_key: null
+    animal_key: null
+    condition: {key: group, map: {}, family: chemical_menopause, control: vehicle}
+    status: fill_in
+    notes: "The VCD chemical-menopause subset of the Benayoun lab inputs (also E-MTAB-12889, GSE290742 for natural ageing)."
+
+  - name: galligos2026
+    enabled: false
+    tier: A
+    species: mouse
+    source: {type: url, accession: GSE317144, urls: []}
+    path: data/raw/galligos2026
+    label_key: null
+    animal_key: null
+    condition: {key: age_group, map: {}, family: ageing, control: young}
+    status: fill_in
+    notes: "Galligos, Varberg, Gerton et al. 2026, Communications Biology, ovarian inflammaging; spatial twin GSE317297."
+
+  - name: garcia_alonso_mouse_gonad
+    enabled: false
+    tier: A
+    species: mouse
+    suspension_type: cell
+    source: {type: cellxgene_collection, collection_id: null, author_h5ad: true, accession: null}   # fill in: the Garcia-Alonso 2022 collection id ("Mouse Female" gonad)
+    path: data/raw/garcia_alonso_mouse_gonad/garcia_alonso_mouse_gonad.h5ad
+    label_key: cell_type
+    gene_key: feature_name
+    animal_key: donor_id
+    condition: {key: development_stage, map: {}, family: development, control: null}
+    status: fill_in
+    notes: "Fetal and early postnatal gonad (TS17-26, P5), 63,929 cells; development context, low weight."
+
+  # --- the own data: a held-out context, never pooled --------------------------
+
+  - name: mouse_comp_30d
+    enabled: false                 # enable once the Mouse_Compensatory object is on this machine
+    tier: A
+    species: mouse
+    suspension_type: nucleus
+    assay: "10x 3' (nuclei)"
+    strain: null
+    sex: female
+    source: {type: local}
+    path: ../Mouse_Compensatory/results/objects/subtypes.h5ad   # or annotated.h5ad; the final labels (major_type) and `mouse`
+    label_key: major_type
+    gene_key: null
+    animal_key: mouse
+    condition:
+      key: condition
+      map: {sham: sham, ooph: ooph_30d}
+      family: surgery
+      control: sham
+    held_out: true
+    status: ready
+    notes: "Oophorectomy vs sham, 30 d, 2 vs 2 mice, ~50,000 nuclei. The first-of-its-kind context: no public ground truth, scored only against its own cross-mouse replicate ceiling."
+
+  # --- Tier C, human (the second species; ablation only) ------------------------
+
+  - name: jin_snrna_menopause
+    enabled: false
+    tier: C
+    species: human
+    suspension_type: nucleus
+    source: {type: cellxgene_collection, collection_id: null, author_h5ad: true, accession: GSE202601}
+    path: data/raw/jin_snrna_menopause/jin_snrna_menopause.h5ad
+    label_key: cell_type
+    gene_key: feature_name
+    animal_key: donor_id
+    condition: {key: development_stage, map: {}, family: ageing, control: null}
+    status: fill_in
+    notes: "42,568 nuclei, 23-52 y; the only human ovary snRNA-seq in Census."
+
+  - name: gse329417_postmenopausal
+    enabled: false
+    tier: C
+    species: human
+    suspension_type: nucleus
+    source: {type: url, accession: GSE329417, urls: []}
+    path: data/raw/gse329417_postmenopausal
+    label_key: null
+    animal_key: null
+    condition: {key: age_group, map: {}, family: ageing, control: null}
+    status: fill_in
+    notes: "439,011† nuclei, 64 samples, 28 postmenopausal donors (GEO 2026-05-11); 2.5x all normal human ovary in Census."

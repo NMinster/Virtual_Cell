@@ -1,0 +1,185 @@
+# =====================================================================
+# Virtual_Cell :: the label crosswalk (atlas labels -> Cell Ontology)
+# ---------------------------------------------------------------------
+# Two levels. `major` is the eight-type vocabulary of Mouse_Compensatory
+# (annotate.major_types), the level every dataset reaches and the level
+# T1 is scored at. `fine` is the Cell Ontology term the authors' markers
+# justify, where one exists; between April 2024 and June 2026 the
+# ontology gained the stage-resolved granulosa, theca and luteal terms
+# listed under `cl_terms`, and no published atlas uses them yet.
+#
+# Rules (docs/project_plan.md 4.3):
+#   * a label maps to the most specific term its authors' markers
+#     justify; one with no term keeps `fine: null`;
+#   * a label the crosswalk does not list is NOT folded in: it keeps its
+#     text, gets major type `Unassigned` and crosswalk_status `unmapped`,
+#     and shows up in tables/harmonise/crosswalk_review.csv for the lab;
+#   * matching is case-insensitive after stripping; `global` applies when
+#     a dataset block has no entry for the label.
+#
+# `cl_id: verify` marks a term whose identifier was not confirmed against
+# the ontology from this machine: check it at https://www.ebi.ac.uk/ols4
+# (search the label) before the crosswalk is released. The seed of this
+# file is Mouse_Compensatory/config/reference_labels.yaml.
+# =====================================================================
+
+major_types: [Oocytes, Granulosa, Luteal, Theca, Stromal, Endothelial, Epithelial, Immune]
+
+cl_terms:
+  major:
+    Oocytes:     {cl_id: "CL:0000023", cl_label: oocyte}
+    Granulosa:   {cl_id: "CL:0000501", cl_label: granulosa cell}
+    Luteal:      {cl_id: "CL:0000175", cl_label: luteal cell}
+    Theca:       {cl_id: "CL:0000503", cl_label: theca cell}
+    Stromal:     {cl_id: "CL:0002132", cl_label: stromal cell of ovary}
+    Endothelial: {cl_id: "CL:0000115", cl_label: endothelial cell}
+    Epithelial:  {cl_id: "CL:0000066", cl_label: epithelial cell}        # OSE and rete; see fine
+    Immune:      {cl_id: "CL:0000738", cl_label: leukocyte}
+    Unassigned:  {cl_id: null, cl_label: null}
+  fine:
+    # granulosa stages (CL additions 2024-2026, anchored to Morris 2022 markers)
+    pre-granulosa cell:               {cl_id: "CL:4033066", major: Granulosa}
+    mural granulosa cell:             {cl_id: "CL:4033067", major: Granulosa}
+    cumulus cell:                     {cl_id: "CL:0000711", major: Granulosa}
+    squamous granulosa cell:          {cl_id: verify, major: Granulosa}   # primordial follicle
+    cuboidal granulosa cell:          {cl_id: verify, major: Granulosa}   # primary follicle
+    atretic granulosa cell:           {cl_id: verify, major: Granulosa}
+    # luteal (early Parm1-high, late Akr1c18-high; replaced small / large)
+    early luteal cell:                {cl_id: "CL:4052046", major: Luteal, markers: [Parm1]}
+    late luteal cell:                 {cl_id: "CL:4052047", major: Luteal, markers: [Akr1c18]}
+    # theca and interstitium
+    pre-theca cell:                   {cl_id: verify, major: Theca}
+    theca interna cell:               {cl_id: verify, major: Theca}
+    theca externa cell:               {cl_id: verify, major: Theca}
+    atretic theca cell:               {cl_id: verify, major: Theca}
+    steroidogenic stromal cell of ovary: {cl_id: verify, major: Theca}   # "Enpp2- interstitial cells"; in this vocabulary the steroidogenic interstitium sits with Theca
+    # stroma and vessels
+    fibroblast:                       {cl_id: "CL:0000057", major: Stromal}
+    pericyte:                         {cl_id: "CL:0000669", major: Stromal}
+    smooth muscle cell:               {cl_id: "CL:0000192", major: Stromal}
+    endothelial cell of lymphatic vessel: {cl_id: "CL:0002138", major: Endothelial}
+    # epithelium
+    ovarian surface epithelial cell:  {cl_id: verify, major: Epithelial}
+    # immune
+    macrophage:                       {cl_id: "CL:0000235", major: Immune}
+    monocyte:                         {cl_id: "CL:0000576", major: Immune}
+    dendritic cell:                   {cl_id: "CL:0000451", major: Immune}
+    neutrophil:                       {cl_id: "CL:0000775", major: Immune}
+    granulocyte:                      {cl_id: "CL:0000094", major: Immune}
+    T cell:                           {cl_id: "CL:0000084", major: Immune}
+    B cell:                           {cl_id: "CL:0000236", major: Immune}
+    natural killer cell:              {cl_id: "CL:0000623", major: Immune}
+    erythrocyte:                      {cl_id: "CL:0000232", major: Unassigned}
+
+# --- the global map: Cell Ontology names and common free text ---------------
+global:
+  granulosa cell: {major: Granulosa}
+  granulosa: {major: Granulosa}
+  cumulus cell: {major: Granulosa, fine: cumulus cell}
+  mural granulosa cell: {major: Granulosa, fine: mural granulosa cell}
+  luteal cell: {major: Luteal}
+  luteal: {major: Luteal}
+  early luteal cell: {major: Luteal, fine: early luteal cell}
+  late luteal cell: {major: Luteal, fine: late luteal cell}
+  theca cell: {major: Theca}
+  theca: {major: Theca}
+  theca interna cell: {major: Theca, fine: theca interna cell}
+  theca externa cell: {major: Theca, fine: theca externa cell}
+  pre-theca cell: {major: Theca, fine: pre-theca cell}
+  stromal cell of ovary: {major: Stromal}
+  ovarian stromal cell: {major: Stromal}
+  stromal cell: {major: Stromal}
+  fibroblast: {major: Stromal, fine: fibroblast}
+  smooth muscle cell: {major: Stromal, fine: smooth muscle cell}
+  pericyte: {major: Stromal, fine: pericyte}
+  endothelial cell: {major: Endothelial}
+  endothelium: {major: Endothelial}
+  lymphatic endothelial cell: {major: Endothelial, fine: endothelial cell of lymphatic vessel}
+  endothelial cell of lymphatic vessel: {major: Endothelial, fine: endothelial cell of lymphatic vessel}
+  epithelial cell: {major: Epithelial}
+  ovarian surface epithelial cell: {major: Epithelial, fine: ovarian surface epithelial cell}
+  epithelium: {major: Epithelial}
+  macrophage: {major: Immune, fine: macrophage}
+  monocyte: {major: Immune, fine: monocyte}
+  dendritic cell: {major: Immune, fine: dendritic cell}
+  neutrophil: {major: Immune, fine: neutrophil}
+  granulocyte: {major: Immune, fine: granulocyte}
+  t cell: {major: Immune, fine: T cell}
+  b cell: {major: Immune, fine: B cell}
+  natural killer cell: {major: Immune, fine: natural killer cell}
+  leukocyte: {major: Immune}
+  immune: {major: Immune}
+  oocyte: {major: Oocytes}
+  oocytes: {major: Oocytes}
+  erythrocyte: {major: Unassigned, fine: erythrocyte}
+
+# --- per dataset: the authors' labels ----------------------------------------
+datasets:
+
+  # Isola / Ocañas 2024 (obs cluster.names). Stroma C carries Rgs5, Notch3,
+  # Pdgfrb, Abcc9: pericytes. "Epithelium B" (107 cells) carries Mmrn1, Flt4,
+  # Prox1, Ccl21d, Reln: lymphatic endothelium, not epithelium
+  # (Mouse_Compensatory docs/clustering_review.md).
+  isola2024:
+    stroma a: {major: Stromal, fine: fibroblast}
+    stroma b: {major: Stromal}
+    stroma c: {major: Stromal, fine: pericyte}
+    theca: {major: Theca}
+    granulosa a: {major: Granulosa}
+    granulosa b: {major: Granulosa}
+    luteal: {major: Luteal}
+    endothelium: {major: Endothelial}
+    epithelium a: {major: Epithelial, fine: ovarian surface epithelial cell}
+    epithelium b: {major: Endothelial, fine: endothelial cell of lymphatic vessel}
+    phagocytes a: {major: Immune, fine: macrophage}
+    phagocytes b: {major: Immune, fine: macrophage}
+    t-lymphocytes: {major: Immune, fine: T cell}
+    b-lymphocytes: {major: Immune, fine: B cell}
+    oocytes: {major: Oocytes}
+
+  # Morris 2022 Level 0 and Level 1 (the eLife reviewer asked for the
+  # mesenchyme names to be made consistent; these are the final ones).
+  morris2022:
+    granulosa: {major: Granulosa}
+    mesenchyme: {major: Stromal}
+    immune: {major: Immune}
+    endothelium: {major: Endothelial}
+    epithelium: {major: Epithelial}
+    oocyte: {major: Oocytes}
+    gc_preantral: {major: Granulosa}
+    gc_antral: {major: Granulosa}
+    gc_estrous: {major: Granulosa}
+    gc_mitotic: {major: Granulosa}
+    gc_mural: {major: Granulosa, fine: mural granulosa cell}
+    gc_atretic: {major: Granulosa, fine: atretic granulosa cell}
+    gc_cl_active: {major: Luteal}
+    gc_cl_lytic: {major: Luteal}
+    m_immature theca: {major: Theca, fine: pre-theca cell}
+    m_steroidogenic theca: {major: Theca}
+    m_dividing mesenchyme: {major: Stromal}
+    m_cortical stroma: {major: Stromal, fine: fibroblast}
+    m_medullary stroma: {major: Stromal, fine: fibroblast}
+    m_smooth muscle: {major: Stromal, fine: smooth muscle cell}
+    m_pericyte: {major: Stromal, fine: pericyte}
+    b_cell: {major: Immune, fine: B cell}
+    t_cell: {major: Immune, fine: T cell}
+    macrophage: {major: Immune, fine: macrophage}
+    dendritic_cell: {major: Immune, fine: dendritic cell}
+    granulocyte: {major: Immune, fine: granulocyte}
+    en_blood: {major: Endothelial}
+    en_lymph: {major: Endothelial, fine: endothelial cell of lymphatic vessel}
+
+  # Huang 2025: fill in after the download (16 clusters)
+  huang2025: {}
+
+  # The own data: the final eight types of Mouse_Compensatory
+  mouse_comp_30d:
+    oocytes: {major: Oocytes}
+    granulosa: {major: Granulosa}
+    luteal: {major: Luteal}
+    theca: {major: Theca}
+    stromal: {major: Stromal}
+    endothelial: {major: Endothelial}
+    epithelial: {major: Epithelial}
+    immune: {major: Immune}
+    unassigned: {major: Unassigned}

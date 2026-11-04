@@ -505,5 +505,14 @@ Virtual_Cell/
   tests/           synthetic two-condition object, stub model, runner
 ```
 
-Nothing is scaffolded yet; phase 0 starts with the preregistration file
-and the two single-GPU checks, and the package follows the gates.
+The package, the config side files, the Biowulf scripts, the synthetic
+corpus and the tests were scaffolded on 2026-11-04 (the stage table is in
+the README); the preregistration draft is
+[`preregistration.md`](preregistration.md) and the step-by-step route to
+the first three tables is
+[`first_results_checklist.md`](first_results_checklist.md). What the
+scaffold does not do yet: run a real base model (the scPRINT-2, UCE and
+TranscriptFormer branches are ported untested), parse Arc's scorer
+output (`--scorer cell-eval2` writes the files and calls the CLI with
+flags to be checked), the T2 integration and T4 gene-program tasks, the
+condition head for arms A and B, and the spatial arm.

@@ -9,3 +9,11 @@ __pycache__/
 .vscode/
 .idea/
 .DS_Store
+
+# Data and results live under paths.data / paths.results (OVARY_FM_DATA, OVARY_FM_RESULTS), never in git
+data/*
+!data/.gitkeep
+results/
+logs/
+*.h5ad
+*.parquet

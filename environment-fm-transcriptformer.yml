@@ -1,0 +1,22 @@
+# TranscriptFormer (czi-ai/transcriptformer; TF-Exemplar covers mouse).
+# A fourth stack, on the cell2location pattern. Built by
+# `bash biowulf/setup_env.sh --fm transcriptformer`; used by
+# `ovary-fm fm --tool transcriptformer` on the gpu partition (an
+# A100-40GB is the documented target; batch size 1-4 on 16 GB).
+#
+# Python 3.11 or 3.12 only (on 3.14 pip silently installs a broken
+# 0.0.0), torch <= 2.5.1. Weights: `transcriptformer download tf-exemplar`
+# into fm.models.transcriptformer.checkpoint, through the proxy. Input
+# uses Ensembl ids (var['gene_ids'], kept by the 10x reader). Licence: MIT.
+name: ovary_fm_transcriptformer
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip
+  - libstdcxx-ng>=13
+  - pip:
+      - transcriptformer
+      - scanpy>=1.10
+      - anndata>=0.10
+      - pyarrow>=14.0

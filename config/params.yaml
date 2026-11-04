@@ -1,0 +1,100 @@
+# =====================================================================
+# Virtual_Cell :: parameters (ovary_fm)
+# ---------------------------------------------------------------------
+# One file, every stage reads it. The dataset manifest, the label
+# crosswalk and the benchmark definition are side files (paths.*), so
+# the synthetic test corpus runs through the same code with
+# `--set paths.corpus_manifest=... --set paths.crosswalk=...
+# --set paths.benchmark=...`. The environment wins over this file for
+# the roots that move between machines: OVARY_FM_DATA, OVARY_FM_RESULTS.
+# =====================================================================
+paths:
+  data: data                       # data/raw/<dataset>/ (downloads), data/corpus/ (qc shards, the corpus)
+  results: results
+  corpus_manifest: config/corpus.yaml
+  crosswalk: config/crosswalk.yaml
+  benchmark: config/benchmark.yaml
+
+# --- qc: per dataset, before anything is pooled --------------------------
+# The Mouse_Compensatory rules, dataset by dataset: the plan's hard
+# filters, then per-animal MAD bounds, then a mito cap that depends on the
+# modality (nuclei carry almost no mitochondrial reads: a nucleus above 5 %
+# is cytoplasm). The modality comes from the manifest (suspension_type) or,
+# when it says null, from the tells: median mito and the Malat1 share.
+qc:
+  min_counts: 200
+  min_genes: 100
+  max_genes: 10000
+  max_mito_pct: {cell: 20, nucleus: 5}
+  mad:
+    enabled: true
+    n_mads: 3                      # per animal, on log1p(counts) and log1p(genes)
+  modality:
+    nucleus_if_malat1_share_above: 0.02
+    nucleus_if_mito_pct_below: 2.0
+  doublets:
+    enabled: false                 # scanpy's scrublet when true (needs scikit-image); off in the scaffold
+    rate_per_1000: 0.008
+  min_cells_per_animal: 50         # an animal with fewer cells after QC is dropped and named
+  mito_prefix: {mouse: "mt-", human: "MT-"}
+  nuclear_genes: {mouse: [Malat1, Neat1, Meg3], human: [MALAT1, NEAT1, MEG3]}
+  ribo_prefix: {mouse: ["Rpl", "Rps"], human: ["RPL", "RPS"]}
+
+# --- harmonise: the crosswalk and the gene space -------------------------
+harmonise:
+  gene_space: union                # union | intersection of symbols across the pooled datasets
+  min_datasets_per_gene: 1         # with `union`, keep a gene seen in at least this many datasets
+  unmapped_label: Unassigned       # author labels the crosswalk does not know keep their text and this major type
+  drop_unmapped: false             # keep them in the corpus (flagged), out of the label-transfer scoring
+  # A dataset with held_out: true in the manifest is written as its own shard
+  # (data/corpus/heldout_<name>.h5ad) and never into corpus.h5ad.
+
+# --- the model arms ----------------------------------------------------------
+# `train --arm a|b` writes the recipe (config + sbatch) and never launches
+# it; `train --arm c` runs scVI/scANVI when scvi-tools is importable.
+models:
+  arm_a:
+    kind: scprint2_cpt             # continued pretraining of scPRINT-2 medium (GPL-3)
+    base_checkpoint: medium-v2
+    template: config/train/scprint2_pretrain.yml
+    env: ovary_fm_scprint2
+    epochs: 3
+  arm_b:
+    kind: tahoe_x1_scratch         # <= 30 M parameters from scratch in the Tahoe-x1 stack (Apache-2.0)
+    template: config/train/tahoe_x1_small.yaml
+    env: ovary_fm_tahoe
+    epochs: 6
+  arm_c:
+    kind: scvi                     # the primary baseline
+    env: ovary_fm_scvi
+    n_top_genes: 2000
+    n_latent: 30
+    n_layers: 2
+    n_hidden: 128
+    max_epochs: 50
+    scanvi_epochs: 20
+    batch_key: dataset
+    labels_key: major_type
+    unlabeled_category: Unassigned
+
+# --- the zero-shot arm: one generalist's embedding (as in Mouse_Compensatory) --
+fm:
+  models:
+    stub: {env: null, checkpoint: null}                        # scanpy PCA, for the plumbing
+    scprint2: {env: ovary_fm_scprint2, checkpoint: "small-v2"}
+    uce: {env: ovary_fm_uce, checkpoint: "data/fm/uce/33l_8ep_1024t_1280.torch",
+          uce_dir: "data/fm/UCE"}
+    transcriptformer: {env: ovary_fm_transcriptformer,
+                       checkpoint: "data/fm/transcriptformer/tf_exemplar"}
+  batch_size: 8
+  device: cuda
+  species: mouse
+  n_comps: 50                      # stub only
+
+# --- the stub generator (predict --model stub): the plumbing's model --------
+stub:
+  noise_sd: 0.15                   # log2-fold noise around the b1 transfer
+  n_random_genes: 50               # with no b1 source: this many random genes shifted
+  random_fold: 2.0
+
+random_state: 0

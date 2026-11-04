@@ -1,0 +1,27 @@
+# UCE, Universal Cell Embeddings (snap-stanford/UCE; Nature 2026). A
+# fourth stack, on the cell2location pattern. Built by
+# `bash biowulf/setup_env.sh --fm uce`; used by `ovary-fm fm --tool uce`.
+#
+# UCE ships as a script, not a package: clone the repo to
+# fm.models.uce.uce_dir (data/fm/UCE) and put the checkpoint at
+# fm.models.uce.checkpoint (the 4-layer model downloads itself; the
+# 33-layer one is on figshare). Its requirements pin torch 2.1.1 and
+# scanpy 1.10.2, which is why it cannot share an env with anything else.
+# Genes enter as ESM2 protein embeddings, so mouse symbols need no
+# ortholog mapping (--species mouse). Licence: MIT.
+name: ovary_fm_uce
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10
+  - pip
+  - libstdcxx-ng>=13
+  - pip:
+      - torch==2.1.1
+      - accelerate==0.24.0
+      - scanpy==1.10.2
+      - anndata>=0.10
+      - numpy==1.26.4
+      - scipy
+      - pandas
+      - pyarrow>=14.0
