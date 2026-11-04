@@ -162,7 +162,7 @@ the two human atlases (`enabled: false`). What the download will tell you:
 ## 4. Fetch (one batch job per dataset; minutes to an hour each; ~11 GB)
 
 ```bash
-bash biowulf/submit.sh fetch --dataset isola2024              # Census: pip install -e .[census] first
+bash biowulf/submit.sh fetch --dataset isola2024              # Census: needs the extra below, once
 bash biowulf/submit.sh fetch --dataset huang2025              # 5.5 GB .rds
 bash biowulf/submit.sh fetch --dataset wang_suh_estropause    # 1.2 GB tar, unpacked by fetch
 bash biowulf/submit.sh fetch --dataset schuh2024_ovulation    # 4.4 GB tar, unpacked by fetch
