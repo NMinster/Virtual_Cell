@@ -1,0 +1,20 @@
+# Keep LF in everything that a Linux shell or R has to read. A CRLF shell
+# script fails on Biowulf with `\r: command not found`.
+* text=auto eol=lf
+*.sh text eol=lf
+*.R text eol=lf
+*.py text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.md text eol=lf
+
+# Binary
+*.png binary
+*.pdf binary
+*.xlsx binary
+*.h5ad binary
+*.h5 binary
+*.rds binary
+*.parquet binary
+*.csv text eol=lf
+*.toml text eol=lf

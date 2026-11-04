@@ -18,11 +18,16 @@
 #
 # Idempotent. Overrides: ENV_NAME, CONDA_ROOT=/data/$USER/conda, CONDA_INSTALL.
 # =============================================================================
+# CRLF guard: a checkout made on Windows (core.autocrlf=true) arrives with \r line
+# endings and bash dies at `set -euo pipefail` with "set: pipefail\r: invalid option
+# name". Re-run this script's text with the \r stripped; the permanent fix is
+# `sed -i 's/\r$//' biowulf/*.sh` (the .gitattributes keeps fresh clones LF).
+if [[ -z "${OVFM_CRLF_CLEANED:-}" ]] && grep -q $'\r' "$0" 2>/dev/null; then echo ">> $0 has CRLF line endings; running a cleaned copy (fix: sed -i 's/\r$//' biowulf/*.sh)" >&2; OVFM_CRLF_CLEANED=1 exec bash -c "$(tr -d '\r' < "$0")" "$0" "$@"; fi  # must stay one line ending in a comment
 set -euo pipefail
 
 ENV_NAME="${ENV_NAME:-ovary_fm}"
 CONDA_ROOT="${CONDA_ROOT:-/data/${USER}/conda}"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 WITH_ARC=0; TRAIN=(); FM=()
 while [[ $# -gt 0 ]]; do

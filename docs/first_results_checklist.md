@@ -40,6 +40,20 @@ export OVARY_FM_RESULTS=/data/$USER/ovary_fm/results
 Put the two exports in your login shell's profile; `submit.sh` bakes them
 into every job script.
 
+Clone on Biowulf itself, not on a Windows machine and then copy. A
+checkout made with `core.autocrlf=true` arrives with `\r` line endings
+and every shell script dies at its first line with
+`set: pipefail\r: invalid option name` (the terminal garbles the message
+because of the carriage return). The repo's `.gitattributes` now forces
+LF on checkout and the scripts re-run themselves cleaned when they
+detect `\r`, but if you ever see that message:
+
+```bash
+git config --global core.autocrlf        # should be empty or `input` on Biowulf
+sed -i 's/\r$//' biowulf/*.sh R/*.R      # strip the carriage returns in place
+git pull && git checkout -- .            # or re-checkout with the LF attributes
+```
+
 ## 1. Build the environment and prove the plumbing (30-60 min)
 
 - [ ] `bash biowulf/setup_env.sh` (in an `sinteractive --mem=16g
