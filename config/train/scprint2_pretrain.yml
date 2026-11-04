@@ -1,0 +1,47 @@
+# =====================================================================
+# Arm A: scPRINT-2 medium, continued pretraining on the ovary corpus
+# ---------------------------------------------------------------------
+# THIS IS NOT A FILE scPRINT-2 LOADS AS IS. It is the plan's values, laid
+# out in the shape of their config/pretrain_medium.yml (cantinilab/
+# scPRINT-2, November 2026: 16 layers, d 512, "90M params"; docs/
+# pretrain.md; the SLURM recipe is 4 x A40-40GB, 16 CPU and 90 GB RAM per
+# GPU; base config max_len 2200, batch 64, n_samples_per_epoch 2.8 M,
+# precision 16-mixed). Transcribe each block into the keys their current
+# release uses, then `scprint2 fit --config <their file>`.
+# `ovary-fm train --arm a` copies this file with {corpus}, {out},
+# {epochs} and {base_checkpoint} filled in.
+# =====================================================================
+plan:
+  arm: A
+  base_checkpoint: "{base_checkpoint}"      # from the Hugging Face hub on first use (HF_HOME under /data/$USER)
+  licence_note: "GPL-3 on the code; no separate weights licence file. Ask the authors before redistributing a fine-tuned checkpoint."
+
+data:
+  corpus: "{corpus}"                         # data/corpus/corpus.h5ad: raw counts, mouse symbols + var['gene_ids']
+  loader: scdataloader                       # their loader (lamindb-backed); one exporter from the corpus object
+  organisms: ["NCBITaxon:10090"]             # mouse first; add "NCBITaxon:9606" for the species ablation (KR4)
+  assay_token: suspension_type               # cell vs nucleus enters as a token, never as a gene filter
+  exclude_assays: ["EFO:0010961"]            # Visium-type spots stay out of core pretraining (as they do)
+  max_len: 2200
+  gene_vocab: precomputed_embeddings         # their ESM-style gene embeddings; ovary genes missing from the table get one computed, not dropped
+  held_out_datasets: []                      # the manifest's held_out shards are never in the corpus object anyway
+
+model:
+  size: medium                               # 16 layers, d 512, ~90 M parameters
+  objective: zinb_and_mse                    # count likelihood on raw counts
+
+trainer:
+  precision: 16-mixed
+  max_epochs: {epochs}
+  batch_size: 64
+  n_samples_per_epoch: 2800000
+  devices: 4                                 # one Biowulf A100 node
+  checkpoint_dir: "{out}/checkpoints"
+  log_dir: "{out}/logs"
+  seed: 0
+
+smoke_test:
+  # before asking for a node: one GPU, a corpus subset, a few hundred steps
+  devices: 1
+  limit_train_batches: 300
+  subset_cells: 50000

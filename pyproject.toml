@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ovary-fm"
+version = "0.1.0"
+description = "An ovary-specific foundation model: corpus, held-out-context benchmark, model arms"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "pandas>=2.0",
+    "pyyaml>=6.0",
+    "anndata>=0.10",
+    "scanpy>=1.10",
+    "scikit-learn>=1.3",
+    "pyarrow>=14.0",
+    "h5py>=3.8",
+]
+
+[project.optional-dependencies]
+# The public-atlas download through the Census API (corpus.yaml source type cellxgene_collection).
+census = ["cellxgene-census>=1.15"]
+# Arc's scorer: `ovary-fm score --scorer cell-eval2` wraps it; the internal `lite` scorer runs without it.
+arc = ["cell-eval2>=0.21"]
+# Arm C (models.arm_c.kind = scvi): scVI / scANVI on the corpus.
+scvi = ["scvi-tools>=1.2"]
+# Reference mapping with CellTypist beside the scikit-learn logistic regression (t1.classifier).
+celltypist = ["celltypist>=1.6"]
+dev = ["pytest>=7.4"]
+
+[project.scripts]
+ovary-fm = "ovary_fm.cli:main"
+
+[tool.setuptools]
+packages = ["ovary_fm", "ovary_fm.bench", "ovary_fm.models"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning", "ignore::FutureWarning", "ignore::UserWarning"]

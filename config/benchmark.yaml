@@ -1,0 +1,98 @@
+# =====================================================================
+# Virtual_Cell :: the benchmark (docs/preregistration.md is the frozen copy)
+# ---------------------------------------------------------------------
+# T1  label transfer, leave one atlas out, at the major level, with
+#     rare-type F1 beside macro-F1.
+# T3  condition effect in a held-out context: the model receives a
+#     compartment's control cells and emits integer-count cells for the
+#     perturbed condition; six members, each rescaled s = (u - b) / (r - b)
+#     against the baseline b and the cross-animal split-half replicate r
+#     (the Virtual Cell Challenge 2026 contract, cell-eval2 preset
+#     vcc2026). The internal `lite` scorer in ovary_fm/bench/metrics.py
+#     implements the six members from the published specification and is
+#     NOT Arc's code; `ovary-fm score --scorer cell-eval2` wraps theirs.
+# T2 (integration) and T4 (biological priors) are not in the scaffold.
+# =====================================================================
+
+t1:
+  level: major                     # the eight types; `fine` once the crosswalk covers enough cells
+  held_out: all                    # every labelled, pooled dataset in turn; or a list of names
+  test_only: [mouse_comp_30d]      # held-out shards are scored as test sets, never trained on
+  rare_types: [Oocytes, Luteal, Theca, Epithelial]
+  min_cells_per_type: 20           # a type with fewer cells in the test set is not scored
+  classifier: logreg               # logreg (scikit-learn, on 2,000 HVGs of the training set) | celltypist
+  n_top_genes: 2000
+  C: 0.1
+  max_iter: 300
+  max_cells_per_class: 2000        # subsample the training set per class
+  knn: 15                          # for --rep (an embedding): kNN transfer inside it
+
+t3:
+  compartment_key: major_type
+  compartments: [Granulosa, Luteal, Theca, Stromal, Endothelial, Epithelial, Immune, Oocytes]
+  min_cells: 400                   # Arc's 400 per perturbation; the gate below is what the scaffold enforces
+  min_cells_hard: 50               # below this a (context, condition, compartment) is listed, not scored
+  min_animals_for_cross_animal_halves: 2
+  n_splits: 5
+  base_seed: 0
+  de:
+    normalise_to: 1.0e6            # per-cell CPM for the Wilcoxon test
+    min_cpm_control: 5.0           # genes tested: mean > 5 CPM in the real control cells
+    fdr: 0.05
+    lfc_eps: 1.0e-9
+    nmae_min_genes: 10             # the fold-change member needs >= 10 real DE genes
+  pds:
+    target_sum: 5.0e4              # group-summed counts -> TS -> log1p; cosine distance
+    pool: compartment              # the rank runs over every (context, condition) of the compartment
+  members: [pds_cosine, expr_mse, de_direction_fidelity, de_direction_reach, de_sig_jaccard, de_lfc_nmae]
+  reach_purity: 0.9
+  clamp: {expr_mse: [0, 1], de_lfc_nmae_floor: -6}
+  baseline: b1_else_b0             # s is against b1 (transfer) when a source exists, else b0 (control copy); both reported
+
+  # genes excluded from every member, per condition family: the ones that
+  # DEFINE the condition and would leak it (Arc excludes the knockdown
+  # targets). The lists are frozen in docs/preregistration.md.
+  exclude_genes:
+    global: [Xist, Tsix]
+    ovulation: [Egr1, Fos, Fosb, Jun, Junb, Nr4a1, Nr4a2, Nr4a3, Ier2, Ier3, Atf3, Btg2, Ptgs2, Areg, Ereg, Pgr]
+    cycle: []
+    ageing: []
+    chemical_menopause: []
+    genotype: []                   # plus the knocked-out gene, per context (`exclude` below)
+    drug: []
+    surgery: []
+
+  contexts:
+    - name: isola_ageing
+      dataset: isola2024
+      family: ageing
+      control: age_3mo
+      perturbed: [age_9mo]
+    - name: huang_ovulation
+      dataset: huang2025
+      family: ovulation
+      control: hcg_0h
+      perturbed: [hcg_4h, hcg_12h]
+    - name: morris_cycle
+      dataset: morris2022
+      family: cycle
+      control: diestrus
+      perturbed: [proestrus, estrus, metestrus, hcg_8h]
+    - name: mouse_comp_surgery
+      dataset: mouse_comp_30d
+      family: surgery
+      control: sham
+      perturbed: [ooph_30d]
+      held_out: true
+
+# --- the margins and kill rules (docs/preregistration.md) ---------------------
+margins:
+  t1_macro_f1: 0.02
+  t1_rare_f1: 0.05
+  t1_min_atlases: 2                # ... on at least this many held-out atlases
+  t3_context_score: 0.05           # over the best baseline, on >= t3_min_contexts contexts
+  t3_members_positive: 4           # ... with >= 4 of 6 members > 0
+  t3_min_contexts: 2
+  scale_flat: 0.01                 # KR3: < this between 200 K and 1 M cells
+  species_gain: 0.02               # KR4
+  spatial_gain: 0.05               # KR5

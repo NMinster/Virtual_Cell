@@ -1,0 +1,12 @@
+species,n_samples,total_cells,ovary_UBERON_samples,ovary_UBERON_cells,gonad_UBERON_samples,gonad_UBERON_cells,ovary_any_samples,ovary_any_cells,ov_cancer_or_cellline_cells,ov_noncancer_cells,ov_nucleus_cells,ovary_any_pct,ovary_UBERON_pct
+Bos_taurus,176,1194485,0,0,0,0,0,0,0,0,0,0.0,0.0
+Callithrix_jacchus,406,4742509,0,0,0,0,0,0,0,0,0,0.0,0.0
+Equus_caballus,13,117293,0,0,0,0,0,0,0,0,0,0.0,0.0
+Gallus_gallus,146,976293,0,0,2,14355,0,0,0,0,0,0.0,0.0
+Homo_sapiens,35263,302278851,137,815726,2,23444,294,1711242,1471824,239418,72286,0.566,0.27
+Macaca_mulatta,1275,9164160,4,24691,0,0,9,71721,0,71721,0,0.783,0.269
+Mus_musculus,21439,163687964,53,488541,32,207538,112,870640,222423,648217,86346,0.532,0.298
+Oryctolagus_cuniculus,38,423884,0,0,0,0,0,0,0,0,0,0.0,0.0
+Ovis_aries,112,756330,3,26055,0,0,3,26055,0,26055,0,3.445,3.445
+Rattus_norvegicus,271,1295798,0,0,0,0,0,0,0,0,0,0.0,0.0
+Sus_scrofa,317,2773996,2,34758,0,0,2,34758,0,34758,0,1.253,1.253

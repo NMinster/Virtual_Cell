@@ -1,0 +1,38 @@
+# Conda/mamba environment for ovary_fm (corpus, benchmark, baselines, T1).
+#
+#   mamba env create -f environment.yml && conda activate ovary_fm
+#   pip install -e .
+#
+# NOT in here, on purpose (the Mouse_Compensatory rule: stacks that never
+# import each other):
+#   * the foundation models for the zero-shot arm -- one env each
+#     (environment-fm-*.yml), built by `setup_env.sh --fm <model>`;
+#   * the training stacks -- environment-train-scprint2.yml (arm A),
+#     environment-train-tahoe.yml (arm B), environment-scvi.yml (arm C);
+#   * cell-eval2 -- Arc's scorer pulls torch; `setup_env.sh --arc` builds
+#     ovary_fm_arc for it, and `ovary-fm score --scorer cell-eval2` runs it
+#     there. The internal `lite` scorer needs nothing beyond this env.
+name: ovary_fm
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python=3.11
+  - pip
+  - libstdcxx-ng>=13
+  - numpy>=1.24
+  - scipy>=1.10
+  - pandas>=2.0
+  - pyarrow>=14.0
+  - scikit-learn>=1.3
+  - scikit-misc>=0.3        # seurat_v3 HVG (loess)
+  - scikit-image>=0.21      # scrublet's automatic doublet threshold (qc.doublets.enabled)
+  - pyyaml>=6.0
+  - h5py>=3.8
+  - pytest>=7.4
+  - pip:
+      - scanpy>=1.10
+      - anndata>=0.10
+      - celltypist>=1.6     # optional: t1.classifier = celltypist
+      # cellxgene-census is an extra (pip install -e .[census]); it is what
+      # `ovary-fm fetch` uses for a cellxgene_collection source

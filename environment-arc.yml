@@ -1,0 +1,19 @@
+# Arc's scorer, cell-eval2 (ArcInstitute/cell-eval2; PyPI cell-eval2), in
+# its own env because it pulls torch. Built by `bash biowulf/setup_env.sh
+# --arc`; used by `ovary-fm score --scorer cell-eval2`, which runs the
+# scorer through `conda run -n ovary_fm_arc` and reads its tables back.
+# The vcc2026 preset is the contract the benchmark copies (docs/
+# preregistration.md); the internal `lite` scorer in ovary_fm/bench/
+# metrics.py is the fallback and is NOT Arc's implementation.
+name: ovary_fm_arc
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip
+  - libstdcxx-ng>=13
+  - pip:
+      - cell-eval2>=0.21
+      - anndata>=0.10
+      - scanpy>=1.10
+      - pyarrow>=14.0

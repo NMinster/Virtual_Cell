@@ -1,0 +1,19 @@
+# Scratch research notes behind docs/*.md memos (not tracked)
+research_notes/
+reports/
+
+# Python / editors
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.vscode/
+.idea/
+.DS_Store
+
+# Data and results live under paths.data / paths.results (OVARY_FM_DATA, OVARY_FM_RESULTS), never in git
+data/*
+!data/.gitkeep
+results/
+logs/
+*.h5ad
+*.parquet

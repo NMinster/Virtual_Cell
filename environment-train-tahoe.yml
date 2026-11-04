@@ -1,0 +1,18 @@
+# Arm B: a <=30 M-parameter model from scratch in the Tahoe-x1 stack
+# (tahoebio/tahoe-x1, Apache-2.0; Composer / llm-foundry, FSDP). Built by
+# `bash biowulf/setup_env.sh --train tahoe`. Needs an A100-class GPU, CUDA
+# 12.1+ and FlashAttention; the Triton backend is no longer supported.
+# The 70 M config in their repo (global batch 4,800, 6 epochs, lr 3e-4) is
+# the template that config/train/tahoe_x1_small.yaml shrinks.
+name: ovary_fm_tahoe
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip
+  - libstdcxx-ng>=13
+  - pip:
+      - tahoe-x1
+      - scanpy>=1.10
+      - anndata>=0.10
+      - pyarrow>=14.0
