@@ -13,7 +13,8 @@ Four datasets, each with its own label vocabulary, modality and design:
 * synth_benayoun   nuclei, 3 + 3 animals, young vs old (ageing), free-text labels
                    with one label the crosswalk does not know
                    deposited in the GEO RAW layout (per-sample matrices + a cell_info table)
-* synth_unlabelled cells, 3 + 3 animals, young vs old, in the GEO RAW layout with NO labels:
+* synth_unlabelled cells, 3 + 3 animals, young vs old, as per-library csv matrices (two
+                   libraries per animal, one of them in the other orientation) with NO labels:
                    its major types are transferred in harmonise
 * synth_huang      cells, 3 animals x hCG 0 / 4 / 12 h (ovulation), Morris-like labels;
                    the immediate-early genes the benchmark excludes are planted too
@@ -96,7 +97,7 @@ DATASETS = [
      "conditions": [("young", "young", 3, None), ("old", "old", 3, "AGEING_0.8")],
      "map": {"young": "young", "old": "old"}, "control": "young", "age_days": {"young": 120, "old": 540}},
     {"name": "synth_unlabelled", "modality": "cell", "vocab": "own", "label_col": "major_type",
-     "cond_col": "age_group", "family": "ageing", "layout": "geo_raw", "unlabelled": True,
+     "cond_col": "age_group", "family": "ageing", "layout": "geo_csv", "unlabelled": True,
      "conditions": [("young", "young", 3, None), ("old", "old", 3, "AGEING_0.8")],
      "map": {"young": "young", "old": "old"}, "control": "young", "age_days": {"young": 120, "old": 540}},
     {"name": "synth_huang", "modality": "cell", "vocab": "morris", "label_col": "Level1",
@@ -216,6 +217,31 @@ def write_geo_raw(adata, spec: dict, folder: Path):
     pd.DataFrame(rows).to_csv(folder / f"{spec['name']}_cell_info.txt.gz", sep="\t", index=False)
 
 
+def write_geo_csv(adata, spec: dict, folder: Path):
+    """The 'TAR (of CSV)' deposit shape: one genes x cells csv per library, two libraries per
+    animal (a 10X run of most cells and a PlateSeq run of a few), named <GSM>_<Animal>_<run>.csv.gz."""
+    raw = folder / f"{spec['name'].upper()}_RAW"
+    raw.mkdir(parents=True, exist_ok=True)
+    rows = []
+    n = 0
+    for animal in adata.obs["animal"].unique():
+        sub = adata[adata.obs["animal"] == animal]
+        split = np.zeros(sub.n_obs, dtype=bool)
+        split[: max(10, sub.n_obs // 8)] = True            # a small "plate" of cells
+        for run, mask in (("10X", ~split), ("PlateSeq", split)):
+            n += 1
+            part = sub[mask]
+            prefix = f"GSM{n:07d}_{animal}_{run}"
+            frame = pd.DataFrame(part.X.toarray().T.astype(int), index=part.var_names,
+                                 columns=[f"{prefix}_c{j}" for j in range(part.n_obs)])
+            if run == "PlateSeq":
+                frame = frame.T                          # the other orientation, on purpose
+            frame.to_csv(raw / f"{prefix}.csv.gz")
+            for j in range(part.n_obs):
+                rows.append({"cell": f"{prefix}_{prefix}_c{j}", "true_type": part.obs["true_type"].iloc[j]})
+    pd.DataFrame(rows).to_csv(folder / f"{spec['name']}_cell_info.txt.gz", sep="\t", index=False)
+
+
 def write_side_files(out: Path, specs: list[dict]):
     repo_cw = yaml.safe_load((REPO_ROOT / "config" / "crosswalk.yaml").read_text(encoding="utf-8"))
     repo_bench = yaml.safe_load((REPO_ROOT / "config" / "benchmark.yaml").read_text(encoding="utf-8"))
@@ -229,7 +255,7 @@ def write_side_files(out: Path, specs: list[dict]):
                  "condition": {"key": spec["cond_col"], "map": spec["map"], "family": spec["family"],
                                "control": spec["control"]},
                  "status": "ready", "notes": "synthetic"}
-        if spec.get("layout") == "geo_raw":
+        if spec.get("layout") in ("geo_raw", "geo_csv"):
             # the GEO deposit: per-sample matrices, labels in a side table, conditions from the sample names
             entry["path"] = str(out / "data" / "raw" / spec["name"])
             entry["label_key"] = None
@@ -239,6 +265,9 @@ def write_side_files(out: Path, specs: list[dict]):
             entry["animal_key"] = "gsm_sample"
             entry["condition"] = {"key": "gsm_sample", "family": spec["family"], "control": spec["control"],
                                   "patterns": [{"pattern": f"_{raw}_", "value": cond} for raw, cond in spec["map"].items()]}
+            if spec.get("layout") == "geo_csv":
+                entry["animal_regex"] = r"_((?:young|old)_\d+)_"           # two libraries per animal
+                entry["assay_patterns"] = [{"pattern": "PlateSeq", "value": "Smart-seq2"}, {"pattern": "10X", "value": "10x 3'"}]
         if spec.get("age_days"):
             entry["condition"]["age_days"] = spec["age_days"]
         if spec.get("time_h"):
@@ -294,6 +323,8 @@ def main(argv=None):
         folder.mkdir(parents=True, exist_ok=True)
         if spec.get("layout") == "geo_raw":
             write_geo_raw(adata, spec, folder)
+        elif spec.get("layout") == "geo_csv":
+            write_geo_csv(adata, spec, folder)
         else:
             adata.write_h5ad(folder / f"{spec['name']}.h5ad")
         print(f"  {spec['name']}: {adata.n_obs:,} {spec['modality']}s x {adata.n_vars:,} genes, "

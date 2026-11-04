@@ -155,46 +155,65 @@ datasets:
     notes: "Thomas, Marx, Penir, Schuh 2024, Nature Cell Biology (ex vivo imaging of ovulation). scRNA-seq of ovulating FOLLICLES at 0 / 3 / 6 / 9 / 12 h post-hCG, in vivo and in vitro setups, replicates. The second ovulation dataset: the b1 transfer source for Huang 2025 (nearest time point)."
 
   - name: morris2022
-    enabled: false                 # enable once the accession is found (checklist step 2)
+    enabled: false                 # enable once the OSF file is under data/raw/morris2022/ (checklist step 4)
     tier: A
     species: mouse
     suspension_type: cell
-    assay: "10x"
+    assay: inDrop
     sex: female
     source:
-      type: url
-      accession: null              # GSE192722, carried over from Mouse_Compensatory, is WRONG: that record is Lustgarten et al.,
-                                   # human theca cells (Weill Cornell). Read the eLife 2022 data availability statement.
+      type: osf
+      project: 924fz               # https://osf.io/924fz "Single cell sequencing of the mouse ovary in diverse reproductive
+                                   # states" (David Pépin), one 301.8 MB file; the files pane asks for a sign-in, so
+                                   # `fetch` tries the public API and otherwise says to download in a browser
+      accession: null              # not on GEO (GSE192722, carried over from Mouse_Compensatory, is a different study)
       urls: []
     path: data/raw/morris2022
-    label_key: Level1              # Level0 (six types) or Level1 (follicle and corpus luteum states), if the deposit carries them
-    animal_key: null
+    label_key: null                # fill in: Level0 / Level1 if the authors' labels are in the file; else transferred
+    animal_key: null               # fill in: the column naming the mouse, if any
     condition:
-      key: stage
-      patterns:
-        - {pattern: "pmsg|hcg", value: hcg_8h}
-        - {pattern: "lactat", value: lactating}
+      key: null                    # fill in: the column with the reproductive state
+      patterns:                    # the states the OSF description lists
+        - {pattern: "non.?lactat", value: pp10_nonlactating}
+        - {pattern: "lactat", value: pp10_lactating}
         - {pattern: "proestrus", value: proestrus}
         - {pattern: "metestrus", value: metestrus}
         - {pattern: "diestrus", value: diestrus}
         - {pattern: "estrus", value: estrus}
+        - {pattern: "cycl|random", value: cycling}
       family: cycle
       control: diestrus
-      time_h: {hcg_8h: 8}
     status: fill_in
-    notes: "Morris, Meinsohn et al. 2022, eLife 11:e77239, the cycling adult ovary (Pépin lab). >34,000 cells; the 28,014-cell reused object is the cell2location reference of Mantri 2024. The only estrous-staged whole-ovary atlas."
+    notes: "Morris, Meinsohn et al. 2022, eLife 11:e77239 (Pépin lab): a combined inDrop dataset of >34,000 cells from randomly cycling, proestrus, estrus, metestrus, diestrus, and 10 d post-partum lactating and non-lactating ovaries. The only estrous-staged whole-ovary atlas; the 28,014-cell reused object is the cell2location reference of Mantri 2024."
 
   - name: gaylord2025_mouse
-    enabled: false
+    enabled: true
     tier: A
     species: mouse
-    source: {type: url, accession: GSE290743, urls: []}
+    suspension_type: cell
+    assay: "10x 3'"                # the default; the plate libraries are set per sample below
+    sex: female
+    source:
+      type: url
+      accession: GSE290742
+      urls:
+        - https://ftp.ncbi.nlm.nih.gov/geo/series/GSE290nnn/GSE290742/suppl/GSE290742_RAW.tar     # 215 MB, one csv per library
     path: data/raw/gaylord2025_mouse
-    label_key: null
-    animal_key: null
-    condition: {key: age_group, map: {}, family: ageing, control: young}
-    status: fill_in
-    notes: "Gaylord et al. 2025, Science 390 (Laird lab): mouse and human across age, ~100,000 cells, 11 types incl. glia. The linked accession is the human object; confirm the mouse one."
+    label_key: null                # no annotations in the deposit: transferred in harmonise
+    animal_key: gsm_sample         # Young1_10X, Young1_PlateSeq, ... two libraries per animal:
+    animal_regex: "((?:Young|Aged)\\d+)"   # the animal is what this captures from the sample name
+    assay_patterns:                # Smart-seq2 plates of the large oocytes (full-length read counts), 10x for the rest
+      - {pattern: "PlateSeq", value: "Smart-seq2"}
+      - {pattern: "10X", value: "10x 3'"}
+    condition:
+      key: gsm_sample
+      patterns:
+        - {pattern: "young", value: young}
+        - {pattern: "aged", value: aged}
+      family: ageing
+      control: young
+    status: fill_in                # confirm the sample names against `ovary-fm inspect`; the ages are in the paper
+    notes: "Gaylord, Foecke, Samuel, Soygur et al. 2025, Science 390(6778):eadx0659 (PMID 41066539; Laird lab, UCSF). The mouse half of the comparative atlas: three young and three aged mice, each a 10x run of the size-filtered small cells and a Smart-seq2 plate of the large oocytes. The human half is GSE290743."
 
   - name: benayoun_vcd
     enabled: false

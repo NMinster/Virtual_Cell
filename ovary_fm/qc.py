@@ -120,6 +120,25 @@ def apply_schema(adata, entry: dict, modality: str) -> None:
     new["animal"] = (obs[key].astype(str).to_numpy() if key and key in obs else name)
     if key and key not in obs:
         print(f"  !! animal_key {key!r} is not an obs column; the whole dataset counts as one animal")
+    if entry.get("animal_regex") and key and key in obs:
+        # several libraries per animal (a 10x run and a plate of oocytes): the animal is what the
+        # regex captures from the sample name (group 1, else the whole match)
+        rx = re.compile(str(entry["animal_regex"]), re.I)
+
+        def _animal(value: str) -> str:
+            m = rx.search(value)
+            return (m.group(1) if m.groups() else m.group(0)) if m else value
+
+        lookup = {v: _animal(v) for v in obs[key].astype(str).unique()}
+        missed = [v for v, a in lookup.items() if a == v]
+        if missed:
+            print(f"  !! animal_regex matched nothing in: {missed[:8]}")
+        new["animal"] = obs[key].astype(str).map(lookup).to_numpy()
+    if entry.get("assay_patterns") and key and key in obs:
+        compiled = [(re.compile(str(p["pattern"]), re.I), str(p["value"])) for p in entry["assay_patterns"]]
+        lookup = {v: next((a for rx, a in compiled if rx.search(v)), entry.get("assay") or "unknown")
+                  for v in obs[key].astype(str).unique()}
+        new["assay"] = obs[key].astype(str).map(lookup).to_numpy()
     label = entry.get("label_key") or (entry.get("labels_file") or {}).get("label_col")   # a side table's column counts
     new["author_label"] = (obs[label].astype(str).to_numpy() if label and label in obs else "unlabelled")
     if label and label not in obs:

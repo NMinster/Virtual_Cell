@@ -12,7 +12,7 @@
 # organisms): once,
 #     lamin init --storage /data/$USER/ovary_fm/lamin --name ovary_fm --modules bionty
 #     scprint2 easy_setup
-# and the checkpoint, public on the hub (no registration, no email):
+# and the checkpoint, public on the hub under Apache-2.0 (no registration, no email):
 #     hf download jkobject/scPRINT small-v2.ckpt --local-dir $HF_HOME/scprint
 # (both scPRINT and scPRINT-2 checkpoints sit on the scPRINT page.)
 #

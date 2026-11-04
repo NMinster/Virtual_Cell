@@ -83,6 +83,11 @@ t3:
       family: ageing
       control: young
       perturbed: [peri_regular, peri_irregular, post_estropausal]   # senescent_sorted is a sorted subpopulation, not a context
+    - name: gaylord_ageing
+      dataset: gaylord2025_mouse
+      family: ageing
+      control: young
+      perturbed: [aged]
     - name: huang_ovulation
       dataset: huang2025
       family: ovulation
@@ -102,7 +107,7 @@ t3:
       dataset: morris2022
       family: cycle
       control: diestrus
-      perturbed: [proestrus, estrus, metestrus, hcg_8h]
+      perturbed: [proestrus, estrus, metestrus, pp10_lactating, pp10_nonlactating]
     - name: mouse_comp_surgery
       dataset: mouse_comp_30d
       family: surgery

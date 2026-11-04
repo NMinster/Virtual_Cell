@@ -73,10 +73,11 @@ freeze is dropped, not replaced):
 | --- | --- | --- | --- | --- |
 | isola_ageing | isola2024 | ageing | age_3mo | age_9mo |
 | wang_suh_ageing | wang_suh_estropause (GSE267729) | ageing | young | peri_regular, peri_irregular, post_estropausal |
+| gaylord_ageing | gaylord2025_mouse (GSE290742) | ageing | young | aged |
 | huang_ovulation | huang2025 (GSE294534) | ovulation | hcg_0h | hcg_4h, hcg_12h |
 | schuh_ovulation_invivo | schuh2024_ovulation (GSE255274) | ovulation | invivo_hcg_0h | invivo 3, 6, 9, 12 h |
 | schuh_ovulation_invitro | schuh2024_ovulation (GSE255274) | ovulation | invitro_hcg_0h | invitro 3, 6, 9, 12 h |
-| morris_cycle | morris2022 (accession to confirm) | cycle | diestrus | proestrus, estrus, metestrus, hcg_8h |
+| morris_cycle | morris2022 (OSF 924fz, inDrop) | cycle | diestrus | proestrus, estrus, metestrus, pp10_lactating, pp10_nonlactating |
 | mouse_comp_surgery (own, held out) | mouse_comp_30d | surgery | sham | ooph_30d |
 
 Contexts added before the freeze (section 10 lists them) follow the same
@@ -223,6 +224,7 @@ scANVI rows, the data-size and species curves, and every deviation.
 | Date | Section | Change | Reason | Scores seen before the change? |
 | --- | --- | --- | --- | --- |
 | 2026-11-04 | all | file created as a draft | — | no |
-| 2026-11-04 | §4 | contexts added from the GEO records read that day: wang_suh_ageing (GSE267729), schuh_ovulation_invivo and _invitro (GSE255274); morris_cycle's accession marked as unconfirmed (GSE192722 is a different study) | the records became readable; both families now have a second dataset, so b1 exists | no |
+| 2026-11-04 | §4 | morris_cycle: the deposit is OSF project 924fz (inDrop; cycling, four estrous stages, two post-partum states), not GEO; the hcg_8h arm the memo listed is not in the deposit's description and leaves the context; the two post-partum states enter | the OSF record was read | no |
+| 2026-11-04 | §4 | contexts added from the GEO records read that day: wang_suh_ageing (GSE267729), gaylord_ageing (GSE290742), schuh_ovulation_invivo and _invitro (GSE255274); morris_cycle's accession marked as unconfirmed (GSE192722 is a different study) | the records became readable; both families now have a second dataset, so b1 exists | no |
 | 2026-11-04 | §4, §6 | the scale is anchored on b0; b1 is scored as a model and is the bar; the expression replicate is corrected to full depth (÷ 4) | anchoring on b1 made the denominator collapse where the transfer sits near the ceiling (b0 at −34 on one member of the synthetic run); the half-depth expression replicate was noisier than the control copy on small effects | synthetic scores only |
 | 2026-11-04 | §4 | signal gate added (≥ 5 real DE genes after exclusions to score a bundle); PDS requires a pool of ≥ 5 scored bundles | the first synthetic run on Biowulf showed null compartments dominating the aggregate through the empty-set conventions and two-bundle PDS pools | synthetic scores only |

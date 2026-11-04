@@ -2,6 +2,16 @@
 
 Nov 3, 2026 · research memo for the ovary-specific foundation-model project. Written from six parallel literature and data sweeps run on 2026-11-03 (challenge rules; model landscape; ovary data inventory with direct queries of the CELLxGENE Census and the Arc Institute buckets; ovary tools and initiatives; cross-context perturbation methods; engineering recipe). The project plan that follows from it is [`project_plan.md`](project_plan.md). The scratch notes and the machine-readable tables behind the measured numbers sit in `research_notes/` and `reports/` at the repo root, which git ignores.
 
+**Corrections after the memo was written** (2026-11-04, from records read
+in a browser): (1) GSE192722, carried over from Mouse_Compensatory as the
+Morris 2022 accession, is a different study (Lustgarten et al., human
+theca cells); the Morris 2022 deposit is OSF project 924fz, one inDrop
+count matrix of > 34,000 cells, behind a sign-in. (2) The scPRINT model
+card lists the checkpoints under Apache-2.0, which the memo could not
+read. (3) The Gaylord 2025 mouse data are GSE290742 (the human half is
+GSE290743); the ex vivo ovulation series is GSE255274; GSE329417 holds
+439,011 nuclei as stated. Everything else stands as written.
+
 ---
 
 # Ovary gap favors narrow, Arc-scored models

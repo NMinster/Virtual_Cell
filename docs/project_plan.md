@@ -115,7 +115,7 @@ Everything below is written down before any model is trained, in
 | Modality | single-cell and single-nucleus together, with a suspension-type token; spatial bins kept out of core pretraining (section 7) | the field encodes modality as a token rather than filtering genes; no model includes Visium-type spots in pretraining except scGPT-spatial, with a dedicated decoder |
 | Gene space | Ensembl ids; protein-embedding gene tokens (ESM2-style) rather than a one-to-one ortholog table | one-to-one orthologs keep only 77 % of mouse genes (82 % with rescue); embedding tokens let ovary-specific genes in without retraining a table |
 | Objective | count likelihood on raw counts | avoids binning or ranking across the depth differences of nuclei, cells and bins; it is also what the scorer consumes |
-| Base model, arm A | scPRINT-2 medium (90 M), continued pretraining | mouse-native, count-based, ESM-style gene embeddings, ships the pretraining recipe and SLURM configs, already saw the public ovary data; GPL-3 on derived code; the checkpoints are public on the hub, and the licence of a *derived* checkpoint is read off the model card before any release (a GitHub issue if the field is empty) |
+| Base model, arm A | scPRINT-2 medium (90 M), continued pretraining | mouse-native, count-based, ESM-style gene embeddings, ships the pretraining recipe and SLURM configs, already saw the public ovary data; GPL-3 on derived code; the checkpoints are public on the hub under Apache-2.0 (model card, read 2026-11-04), so a derived checkpoint can be released under Apache-2.0 with attribution |
 | Base model, arm B | ≤ 30 M parameters from scratch in the scPRINT-2 small or Tahoe-x1 70 M configuration | the scaling literature says capacity buys little at 1-2 M cells; Apache-2 (Tahoe-x1) or GPL-3 (scPRINT-2) |
 | Primary baseline, arm C | scVI/scANVI on the same corpus, plus a Richter-style masked-autoencoder MLP | the 2026 benchmarks say this is the model to beat |
 | Excluded bases | Arc STATE weights (non-commercial licence that explicitly covers fine-tunings and excludes industry-sponsored research), scFoundation weights (same class), scGPT and Geneformer checkpoints (human-only vocabularies), UCE and TranscriptFormer (inference-only code) | licence or vocabulary; all three generalists stay as the zero-shot arm through the existing `fm` stage |
@@ -133,9 +133,9 @@ goes into a grant or a manuscript they are re-read in the paper. The
 ones the plan actually leans on:
 
 - cell and nucleus counts for Morris 2022 (the repo's reused object has
-  28,014 cells; the paper reports >34,000; the GEO accession carried over
-  from Mouse_Compensatory, GSE192722, is a different study and the real one
-  comes from the eLife data availability statement), Wagner 2020,
+  28,014 cells; the paper reports >34,000; the deposit is OSF project
+  924fz, not GEO: GSE192722, carried over from Mouse_Compensatory, is a
+  different study), Wagner 2020,
   Huang 2025 (GSE294534), Wang/Suh (GSE267729), Gaylord 2025 (GSE290743),
   GSE329417 (439,011 nuclei), the Slide-seq ageing atlas (610,620 spots);
 - the STATE margins (63 % / 47 % / 5 %) and the cancer
@@ -171,11 +171,11 @@ counts; nothing enters from an integrated or normalised object.
 | Dataset | What it contributes | Accession |
 | --- | --- | --- |
 | Isola/Ocañas 2024 (Stout lab) | 3 vs 9 months, 14,349 cells, the authors' 16 labels; already the repo's reference atlas | GSE232309 (also Census) |
-| Morris/Meinsohn 2022 (Pépin lab) | the only estrous-staged whole-ovary atlas; PMSG/hCG 8 h arm; lactation; the Level 0/1 vocabulary the Cell Ontology terms were anchored to | accession to confirm from the eLife paper (GSE192722 is wrong: Lustgarten et al., human theca); 28,014-cell reused object; >34,000† in the paper |
+| Morris/Meinsohn 2022 (Pépin lab) | the only estrous-staged whole-ovary atlas: inDrop, > 34,000 cells, randomly cycling, four estrous stages, 10 d post-partum lactating and non-lactating; the Level 0/1 vocabulary the Cell Ontology terms were anchored to | OSF project 924fz, one 301.8 MB file behind a sign-in (not GEO; GSE192722 is a different study); 28,014-cell reused object in Mantri 2024 |
 | Huang 2025 (Shalek lab) | hCG 0 / 4 / 12 h, six libraries (two pools of three mice per time point), 25,714† cells, paired MERFISH; one 5.5 GB Seurat object | GSE294534 (confirmed) |
 | Schuh lab ovulation series (Nature Cell Biology 2024) | ovulating follicles at 0 / 3 / 6 / 9 / 12 h after hCG, in vivo and in vitro, replicates; 28 per-sample matrices | GSE255274 (confirmed) |
 | Wang/Suh estropausal transition (PNAS 2026) | young, peri-estropausal regular vs irregular, post-estropausal, senescence-sorted; 18 per-sample matrices, no annotations deposited | GSE267729 (confirmed) |
-| Gaylord 2025 (Laird lab, Science) | mouse and human across age, ~100,000† cells, 11 types incl. glia | GSE290743 (human object linked; confirm the mouse part) |
+| Gaylord 2025 (Laird lab, Science) | three young and three aged mice, a 10x run of the small cells and a Smart-seq2 plate of the large oocytes each; twelve csv matrices, no annotations deposited | GSE290742 (confirmed; the human half is GSE290743) |
 | Benayoun cross-species ageing inputs | natural ageing cohorts and the VCD chemical-menopause model | PRJNA863443, E-MTAB-12889, GSE290742 |
 | Galligos/Gerton 2026 inflammaging | ageing with immune expansion; spatial twin | GSE317144 (+ GSE317297 spatial) |
 | lifespan and puberty sets | P1-12 months stroma; 2-6 weeks weekly; ovary vs oviduct vs uterus | GSE127106, GSE268466, GSE241318 |

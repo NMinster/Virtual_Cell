@@ -174,6 +174,50 @@ def _fetch_census(entry, dest: Path) -> list[dict]:
              "sha256": sha256_of(dest) if dest.exists() else None}]
 
 
+def _fetch_osf(entry, folder: Path) -> list[dict]:
+    """An OSF project's files through the public API (https://api.osf.io/v2/nodes/<id>/files/osfstorage/).
+    A project that asks for a sign-in answers 401/403: then download in a browser and drop the
+    files under the dataset folder."""
+    import urllib.error
+
+    src = entry["source"]
+    project = src.get("project")
+    if not project:
+        raise SystemExit(f"{entry['name']}: an osf source needs `project` (the 5-character id in the URL)")
+    api = f"https://api.osf.io/v2/nodes/{project}/files/osfstorage/?page[size]=100"
+    manual = (f"  !! OSF project {project} did not answer the public API; sign in at https://osf.io/{project}/files "
+              f"(ORCID or institutional login), download the file(s) and put them under {folder}/, then run qc")
+    try:
+        with urllib.request.urlopen(api, timeout=120) as response:
+            listing = json.loads(response.read().decode("utf-8"))
+    except (urllib.error.HTTPError, urllib.error.URLError) as exc:
+        print(f"  {api}: {exc}")
+        print(manual)
+        return []
+    records = []
+    for item in listing.get("data", []):
+        attrs = item.get("attributes", {})
+        if attrs.get("kind") != "file":
+            continue
+        url = (item.get("links") or {}).get("download")
+        if not url:
+            continue
+        try:
+            rec = download(url, folder / attrs["name"])
+        except urllib.error.HTTPError as exc:
+            print(f"  {attrs['name']}: {exc}")
+            print(manual)
+            continue
+        if src.get("unpack", True):
+            produced = unpack(Path(rec["path"]))
+            if produced is not None:
+                rec["unpacked_to"] = str(produced)
+        records.append(rec)
+    if not records:
+        print(manual)
+    return records
+
+
 def _fetch_scbasecount(cfg, entry, folder: Path) -> list[dict]:
     src = entry["source"]
     species = entry.get("species", "mouse")
@@ -207,11 +251,16 @@ def run(cfg, dataset: str | None = None):
         path = dataset_path(cfg, entry)
         folder = path if path.suffix == "" else path.parent
         print(f"== {entry['name']} ({kind}; {src.get('accession') or '-'})")
-        if kind == "local":
+        if kind in ("local", "manual"):
             print(f"  {'found' if path.exists() else 'MISSING'}: {path}")
+            if kind == "manual" and not path.exists():
+                print(f"  download by hand from {src.get('url') or src.get('accession') or 'the source in the notes'} "
+                      f"and put it under {folder}/")
             continue
         if kind == "url":
             records = _fetch_urls(entry, folder)
+        elif kind == "osf":
+            records = _fetch_osf(entry, folder)
         elif kind == "cellxgene_collection":
             records = _fetch_census(entry, path if path.suffix == ".h5ad" else folder / f"{entry['name']}.h5ad")
         elif kind == "scbasecount":

@@ -153,6 +153,7 @@ def test_qc_infers_the_modality_and_keeps_the_design(synthetic):
     assert qc.loc["synth_benayoun", "n_animals"] == 6            # read from the GEO RAW layout, one matrix per animal
     assert qc.loc["synth_benayoun", "n_author_labels"] == 9      # the labels came from the cell_info table
     assert qc.loc["synth_unlabelled", "n_author_labels"] == 1    # 'unlabelled'
+    assert qc.loc["synth_unlabelled", "n_animals"] == 6          # twelve csv libraries, animal_regex folds them to six
     assert set(qc.loc["synth_unlabelled", "conditions"].split(";")) == {"young", "old"}   # regex patterns on the sample names
     assert set(qc.loc["synth_huang", "conditions"].split(";")) == {"hcg_0h", "hcg_4h", "hcg_12h"}
     for name in qc.index:
@@ -182,6 +183,7 @@ def test_harmonise_crosswalk_and_corpus(synthetic):
     cell_info = pd.read_csv(synthetic["data"] / "raw" / "synth_unlabelled" / "synth_unlabelled_cell_info.txt.gz", sep="\t").set_index("cell")
     bare = [i.split(":", 1)[1] for i in un.obs_names]
     assert (un.obs["major_type"].astype(str).to_numpy() == cell_info["true_type"].reindex(bare).to_numpy()).mean() > 0.95
+    assert set(un.obs["assay"].astype(str)) == {"10x 3'", "Smart-seq2"}     # assay_patterns per library
     assert (synthetic["data"] / "corpus" / "heldout_synth_mouse_comp.h5ad").exists()
     assert "suspension_type" in corpus.obs and set(corpus.obs["suspension_type"]) == {"cell", "nucleus"}
     truth = corpus.obs["major_type"].astype(str)

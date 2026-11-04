@@ -27,7 +27,12 @@ GEO_SUFFIX = {
     "barcodes": re.compile(r"[_.-](barcodes|cells)\.tsv(\.gz)?$", re.I),
     "features": re.compile(r"[_.-](features|genes)\.tsv(\.gz)?$", re.I),
     "h5": re.compile(r"(?:[_.-](?:filtered|raw)_feature_bc_matrix)?\.h5$", re.I),
+    # one count matrix per sample as a text table (GEO "TAR (of CSV)"): genes x cells or cells x genes
+    "csv": re.compile(r"(?:[_.-](?:counts?|matrix|expression|umi|raw))?\.(csv|tsv|txt)(\.gz)?$", re.I),
 }
+_META_WORDS = ("meta", "cell_info", "annotation", "barcodes", "features", "genes", "readme", "metadata", "donor", "sample")
+# a few genes every mouse or human matrix carries, to tell which axis holds the genes
+_ANCHOR_GENES = {"actb", "malat1", "gapdh", "ptprc", "b2m", "mt-co1", "mt-co1", "malat1"}
 
 # The obs schema every QC'd shard carries (docs/project_plan.md 4.2).
 SCHEMA = ["dataset", "species", "assay", "suspension_type", "strain", "sex", "animal",
@@ -138,13 +143,30 @@ def geo_raw_groups(folder: Path) -> dict:
                 prefix = name[: m.start()]
                 if kind == "h5" and (not prefix or name.endswith(".h5ad")):
                     continue
+                if kind == "csv" and (not prefix or any(w in name.lower() for w in _META_WORDS)):
+                    continue
                 groups.setdefault(prefix, {})[kind] = file
                 break
     complete = {}
     for prefix, g in groups.items():
         if "dir" in g or "h5" in g or {"matrix", "barcodes", "features"} <= set(g):
-            complete[prefix] = g
+            complete[prefix] = {k: v for k, v in g.items() if k != "csv"}
+        elif "csv" in g and len(groups) > 1:
+            complete[prefix] = g                     # per-sample text matrices (a lone csv is the single-matrix path)
     return complete
+
+
+def orient_genes_by_cells(frame: pd.DataFrame, what: str = "") -> pd.DataFrame:
+    """Return the table as genes x cells. The axis that carries anchor genes is the gene
+    axis; with no anchor on either axis the taller axis is taken to be genes, and it is said."""
+    idx = {str(v).lower() for v in frame.index[:50000]}
+    cols = {str(v).lower() for v in frame.columns[:50000]}
+    if idx & _ANCHOR_GENES:
+        return frame
+    if cols & _ANCHOR_GENES:
+        return frame.T
+    print(f"  !! {what}: no anchor gene on either axis; taking the taller axis ({'rows' if frame.shape[0] >= frame.shape[1] else 'columns'}) as genes")
+    return frame if frame.shape[0] >= frame.shape[1] else frame.T
 
 
 def _read_geo_sample(prefix: str, g: dict):
@@ -156,6 +178,13 @@ def _read_geo_sample(prefix: str, g: dict):
         a = sc.read_10x_mtx(g["dir"], var_names="gene_symbols", make_unique=True)
     elif "h5" in g:
         a = sc.read_10x_h5(g["h5"])
+    elif "csv" in g:
+        path = g["csv"]
+        sep = "\t" if (".tsv" in path.name or ".txt" in path.name) else ","
+        frame = orient_genes_by_cells(pd.read_csv(path, sep=sep, index_col=0), prefix)
+        a = ad.AnnData(X=sp.csr_matrix(frame.to_numpy(dtype=np.float32).T),
+                       obs=pd.DataFrame(index=pd.Index(frame.columns.astype(str).to_numpy())),
+                       var=pd.DataFrame(index=pd.Index(frame.index.astype(str).to_numpy())))
     else:
         M = sio.mmread(str(g["matrix"]))
         X = sp.csr_matrix(M.T.astype(np.float32))                      # mtx is genes x cells
@@ -201,8 +230,8 @@ def _read_csv_matrix(path: Path, folder: Path):
     optional *meta*.csv beside it with one row per cell."""
     import anndata as ad
 
-    sep = "\t" if ".tsv" in path.name else ","
-    frame = pd.read_csv(path, sep=sep, index_col=0)
+    sep = "\t" if (".tsv" in path.name or ".txt" in path.name) else ","
+    frame = orient_genes_by_cells(pd.read_csv(path, sep=sep, index_col=0), path.name)
     X = sp.csr_matrix(frame.to_numpy(dtype=np.float32).T)
     adata = ad.AnnData(X=X, obs=pd.DataFrame(index=frame.columns.astype(str)),
                        var=pd.DataFrame(index=frame.index.astype(str)))

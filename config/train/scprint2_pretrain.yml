@@ -33,7 +33,7 @@
 plan:
   arm: A
   base_checkpoint: "{base_checkpoint}"      # medium-v2 (16 layers, d 512, ~90 M parameters)
-  licence_note: "GPL-3 code; the checkpoints are public on the hub. Check the model card's licence field before releasing a derived checkpoint."
+  licence_note: "GPL-3 code; the checkpoints are Apache-2.0 on the hub (model card, 2026-11-04): a derived checkpoint can be released under Apache-2.0 with attribution."
   loading_note: "load a checkpoint with precpt_gene_emb=None, gene_pos_file=None: the gene embeddings are stored in the weights; call model._rm_genes() for genes the lamin ontology no longer carries"
 
 # --- the Lightning CLI keys (override the tool's own configs) ------------------

@@ -103,23 +103,25 @@ say. Settled:
   (5.4 GB) is deposited. GSE267315: 57,970 nuclei, ages 12-54, plus
   Stereo-seq (Zhang, Guo et al. 2026, Aging Cell). Both are Tier C and
   stay disabled until the species ablation.
+- Gaylord 2025 mouse data are GSE290742 (Science 390:eadx0659): three
+  young and three aged mice, a 10x run plus a Smart-seq2 plate of large
+  oocytes each, twelve csv matrices (215 MB), no annotations. The human
+  half is GSE290743. Enabled, with its own ageing context.
 - **GSE192722 is not Morris 2022.** It is Lustgarten et al., human theca
   cells (Weill Cornell). The number came from a docstring in
   Mouse_Compensatory and is wrong there too.
+- Morris 2022 is not on GEO: the deposit is OSF project 924fz (David
+  Pépin, "Single cell sequencing of the mouse ovary in diverse
+  reproductive states"), one 301.8 MB inDrop count matrix of > 34,000
+  cells across randomly cycling, proestrus, estrus, metestrus, diestrus
+  and 10 d post-partum lactating and non-lactating ovaries. The manifest
+  entry points at it; the OSF files pane asks for a sign-in (step 4).
+- scPRINT's model card says Apache-2.0 (read 2026-11-04): a derived
+  checkpoint can be released under Apache-2.0 with attribution. The code
+  stays GPL-3. Nothing to ask anyone.
 
 Still to do, no compute:
 
-- [ ] Morris 2022: the real accession, from the eLife article's Data
-      availability section (https://elifesciences.org/articles/77239) or a
-      GEO search for "cycling murine ovary"; then its file list and format,
-      and whether the Level 0 / Level 1 labels are in the deposit. Put the
-      accession and the URLs under `morris2022` in `config/corpus.yaml` and
-      set `enabled: true`.
-- [ ] Gaylord 2025: which accession holds the mouse object (GSE290743 is
-      linked to the human one).
-- [ ] scPRINT-2: the model card's licence field at
-      https://huggingface.co/jkobject/scPRINT (needed only before a
-      derived checkpoint is released).
 - [ ] Biowulf: `freen | grep a100` and `batchlim` for the current A100
       memory mix and walltime limits.
 
@@ -132,20 +134,22 @@ from 2025-2026 meetings.
 ## 3. The manifest (filled on 2026-11-04; three things left)
 
 `config/corpus.yaml` is filled for Isola 2024 (Census), Huang 2025,
-Wang/Suh and the Schuh series (all `enabled: true`), and for the two human
-atlases (`enabled: false`). What the download will tell you:
+Wang/Suh, the Schuh series and Gaylord 2025 (all `enabled: true`), and for
+the two human atlases (`enabled: false`). What the download will tell you:
 
-- [ ] `bash biowulf/run.sh inspect` → the four mouse datasets are enabled;
-      the two `fill_in` statuses are what step 5 settles.
+- [ ] `bash biowulf/run.sh inspect` → the five mouse datasets are enabled;
+      the `fill_in` statuses are what step 5 settles.
 - [ ] Huang 2025: `label_key` and `animal_key` come from the Seurat
       object's metadata columns, printed by `qc` as `obs columns` after
       the conversion in step 4. The paper's 16 named clusters are the
       labels; if there is a per-mouse (hashtag) column use it as
       `animal_key`, otherwise the library (`orig.ident`) is the replicate.
-- [ ] Wang/Suh and Schuh: the `condition.patterns` are written against the
-      sample titles GEO shows; the real file names may differ. `inspect`
-      prints the `gsm_sample` values once the tars are unpacked, and `qc`
-      prints any value no pattern matches. Adjust the regexes, rerun.
+- [ ] Wang/Suh, Schuh and Gaylord: the `condition.patterns` (and Gaylord's
+      `animal_regex`, which folds the 10x and plate libraries of one mouse
+      into one animal) are written against the sample titles GEO shows;
+      the real file names may differ. `inspect` prints the `gsm_sample`
+      values once the tars are unpacked, and `qc` prints any value no
+      pattern matches. Adjust the regexes, rerun.
 
 ## 4. Fetch (one batch job per dataset; minutes to an hour each; ~11 GB)
 
@@ -154,10 +158,20 @@ bash biowulf/submit.sh fetch --dataset isola2024              # Census: pip inst
 bash biowulf/submit.sh fetch --dataset huang2025              # 5.5 GB .rds
 bash biowulf/submit.sh fetch --dataset wang_suh_estropause    # 1.2 GB tar, unpacked by fetch
 bash biowulf/submit.sh fetch --dataset schuh2024_ovulation    # 4.4 GB tar, unpacked by fetch
+bash biowulf/submit.sh fetch --dataset gaylord2025_mouse      # 215 MB tar of csv matrices
+bash biowulf/submit.sh fetch --dataset morris2022             # OSF: the public API, or the message to download by hand
 bash biowulf/submit.sh python scripts/scbasecount_metadata.py --species mouse
 ```
 
-Yes, download these four now; they are the whole mouse Tier A that is
+Morris 2022 sits on OSF (project 924fz) and its files pane asks for a
+sign-in. If the fetch job prints "did not answer the public API", sign in
+at https://osf.io/924fz/files with ORCID or an institutional login,
+download the 301.8 MB file, put it under `$OVARY_FM_DATA/raw/morris2022/`
+(a `.rds` is converted as for Huang; a csv or h5ad is read as is), then
+set `enabled: true` on `morris2022` and fill its `label_key`, `animal_key`
+and condition column from what `qc` prints.
+
+Yes, download these five now; they are the whole mouse Tier A that is
 reachable today. Leave the human atlases (another 9 GB) until the species
 ablation. The Census route needs the proxy and should never run on the
 login node (the job script carries both).
@@ -174,9 +188,9 @@ Rscript R/rds_to_mtx.R $OVARY_FM_DATA/raw/huang2025/GSE294534_10x_update.rds $OV
 head -3 $OVARY_FM_DATA/raw/huang2025/meta.csv      # the columns for label_key / animal_key
 ```
 
-- [ ] `bash biowulf/run.sh inspect` → `on_disk: True` for all four, the
-      per-sample counts (18 and 28) and the `gsm_sample` values for the
-      two tar datasets.
+- [ ] `bash biowulf/run.sh inspect` → `on_disk: True` for all five, the
+      per-sample counts (18, 28 and 12) and the `gsm_sample` values for
+      the three tar datasets.
 - [ ] `data/scbasecount/mouse_ovary_candidates.csv` lists the ovary
       experiments of scBaseCount (132 experiments, 1.1 M cells, 86,346
       nuclei in six experiments on 2026-11-04), including a 2025 in vivo
@@ -199,12 +213,16 @@ bash biowulf/submit.sh qc --dataset isola2024
 - [ ] `tables/qc/qc_summary.csv`: modality agrees with the manifest (the
       tells are printed either way); `n_animals` is the design's (Isola 8;
       Huang 6 libraries unless a mouse column exists; Wang/Suh 18; Schuh
-      28); `conditions` are the mapped names (`age_3mo;age_9mo`,
+      28; Gaylord 6 animals from 12 libraries); `conditions` are the
+      mapped names (`age_3mo;age_9mo`, `young;aged`,
       `hcg_0h;hcg_4h;hcg_12h`, `young;peri_regular;peri_irregular;
       post_estropausal;senescent_sorted`, `invivo_hcg_0h;...`).
 - [ ] `tables/qc/<name>_dropoff.csv`: no step removes more than you can
       explain; nuclei get the 5 % mito cap, cells 20 %.
-- [ ] Repeat for `huang2025`, `wang_suh_estropause`, `schuh2024_ovulation`.
+- [ ] Repeat for `huang2025`, `wang_suh_estropause`, `schuh2024_ovulation`,
+      `gaylord2025_mouse`. Gaylord's plate libraries are Smart-seq2 read
+      counts, not UMIs; they carry `assay: Smart-seq2` in obs so a model
+      can token them apart, and they are mostly oocytes.
 
 ## 6. Harmonise and review the crosswalk (an hour, plus the lab's review)
 
@@ -279,9 +297,9 @@ bash biowulf/run.sh score --pred $OVARY_FM_RESULTS/predictions/b0.h5ad --name b0
 
 ## 9. b1 already exists for both families; a third dataset each is the next step
 
-With Isola and Wang/Suh in the ageing family and Huang and Schuh in the
-ovulation family, every scored bundle of those contexts has a transfer
-source and the b1 row is the bar. To make the bar harder:
+With Isola, Wang/Suh and Gaylord in the ageing family and Huang and Schuh
+in the ovulation family, every scored bundle of those contexts has a
+transfer source and the b1 row is the bar. To make the bar harder:
 
 - [ ] Ageing: `galligos2026` or `benayoun_vcd` (fill the source, fetch, qc,
       harmonise, bench again).
@@ -289,9 +307,10 @@ source and the b1 row is the bar. To make the bar harder:
       (SRX28395245-50, "0hr post-hCG", "hCG treatment", 14-18 K cells each):
       resolve its GEO series and time points, add it as a third ovulation
       dataset.
-- [ ] Cycle: Morris 2022 once its accession is found (step 2); it is the
+- [ ] Cycle: Morris 2022 once the OSF file is in place (step 4); it is the
       only estrous-staged whole-ovary atlas and the `morris_cycle` context
-      is already defined.
+      is already defined (diestrus against the other stages and the two
+      post-partum states).
 
 ## 10. The third result: label transfer (minutes; an hour with the generalists)
 
