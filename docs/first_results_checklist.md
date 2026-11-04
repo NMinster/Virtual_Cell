@@ -182,7 +182,15 @@ and condition column from what `qc` prints.
 Yes, download these five now; they are the whole mouse Tier A that is
 reachable today. Leave the human atlases (another 9 GB) until the species
 ablation. The Census route needs the proxy and should never run on the
-login node (the job script carries both).
+login node (the job script carries both). It also needs the package's
+`census` extra, which `setup_env.sh` installs since 2026-11-04; on an env
+built before that, once, from the repo root (a Biowulf login shell has no
+bare `pip`; the wrapper runs the env's, and the quotes keep the shell
+from globbing the brackets):
+
+```bash
+bash biowulf/run.sh pip install -e '.[census]'
+```
 
 - [ ] `data/raw/<name>/download.json` exists for each, with sizes and
       sha256; `GSE267729_RAW/` and `GSE255274_RAW/` are unpacked beside

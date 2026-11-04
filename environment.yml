@@ -34,5 +34,6 @@ dependencies:
       - scanpy>=1.10
       - anndata>=0.10
       - celltypist>=1.6     # optional: t1.classifier = celltypist
-      # cellxgene-census is an extra (pip install -e .[census]); it is what
-      # `ovary-fm fetch` uses for a cellxgene_collection source
+      # cellxgene-census is an extra of the package (setup_env.sh installs
+      # `.[census]`); it is what `ovary-fm fetch` uses for a cellxgene_collection
+      # source. On an older env: bash biowulf/run.sh pip install -e '.[census]'

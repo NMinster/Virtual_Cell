@@ -115,7 +115,7 @@ MSG
 
 build_env "${ENV_NAME}" "${REPO_ROOT}/environment.yml"
 set +u; conda activate "${ENV_NAME}"; set -u
-python -m pip install -e "${REPO_ROOT}"
+python -m pip install -e "${REPO_ROOT}[census]"      # the Census API (Isola 2024) is an extra of the package
 python -c "import ovary_fm, scanpy; print('ovary_fm', ovary_fm.__version__, 'scanpy', scanpy.__version__)"
 set +u; conda deactivate; set -u
 

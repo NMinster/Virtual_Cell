@@ -137,7 +137,9 @@ def _fetch_census(entry, dest: Path) -> list[dict]:
     try:
         import cellxgene_census
     except ImportError:
-        raise SystemExit("cellxgene-census is not installed: pip install -e .[census]") from None
+        raise SystemExit("cellxgene-census is not installed in this env: from the repo root, "
+                         "`bash biowulf/run.sh pip install -e '.[census]'` (or `pip install -e '.[census]'` "
+                         "inside the activated env)") from None
     src = entry["source"]
     collection = src.get("collection_id")
     dataset_id = src.get("dataset_id")
