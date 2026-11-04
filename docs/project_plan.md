@@ -133,7 +133,9 @@ goes into a grant or a manuscript they are re-read in the paper. The
 ones the plan actually leans on:
 
 - cell and nucleus counts for Morris 2022 (the repo's reused object has
-  28,014 cells; the paper reports >34,000; GEO GSE192722), Wagner 2020,
+  28,014 cells; the paper reports >34,000; the GEO accession carried over
+  from Mouse_Compensatory, GSE192722, is a different study and the real one
+  comes from the eLife data availability statement), Wagner 2020,
   Huang 2025 (GSE294534), Wang/Suh (GSE267729), Gaylord 2025 (GSE290743),
   GSE329417 (439,011 nuclei), the Slide-seq ageing atlas (610,620 spots);
 - the STATE margins (63 % / 47 % / 5 %) and the cancer
@@ -169,10 +171,10 @@ counts; nothing enters from an integrated or normalised object.
 | Dataset | What it contributes | Accession |
 | --- | --- | --- |
 | Isola/Ocañas 2024 (Stout lab) | 3 vs 9 months, 14,349 cells, the authors' 16 labels; already the repo's reference atlas | GSE232309 (also Census) |
-| Morris/Meinsohn 2022 (Pépin lab) | the only estrous-staged whole-ovary atlas; PMSG/hCG 8 h arm; lactation; the Level 0/1 vocabulary the Cell Ontology terms were anchored to | GSE192722 (28,014-cell reused object; >34,000† in the paper) |
-| Huang 2025 (Shalek lab) | hCG 0 / 4 / 12 h, n = 3 per time point, 25,714† cells, paired MERFISH | GSE294534 |
-| ex vivo ovulation series (Nature Cell Biology 2024) | follicles at 0 / 3 / 6 / 9 / 12 h after hCG, with in vitro arms | scBaseCount SRX23566711-38 (confirm the GEO series) |
-| Wang/Suh estropausal transition (PNAS 2026) | young, peri- and post-estropausal, estrous-staged, senescence-sorted | GSE267729† |
+| Morris/Meinsohn 2022 (Pépin lab) | the only estrous-staged whole-ovary atlas; PMSG/hCG 8 h arm; lactation; the Level 0/1 vocabulary the Cell Ontology terms were anchored to | accession to confirm from the eLife paper (GSE192722 is wrong: Lustgarten et al., human theca); 28,014-cell reused object; >34,000† in the paper |
+| Huang 2025 (Shalek lab) | hCG 0 / 4 / 12 h, six libraries (two pools of three mice per time point), 25,714† cells, paired MERFISH; one 5.5 GB Seurat object | GSE294534 (confirmed) |
+| Schuh lab ovulation series (Nature Cell Biology 2024) | ovulating follicles at 0 / 3 / 6 / 9 / 12 h after hCG, in vivo and in vitro, replicates; 28 per-sample matrices | GSE255274 (confirmed) |
+| Wang/Suh estropausal transition (PNAS 2026) | young, peri-estropausal regular vs irregular, post-estropausal, senescence-sorted; 18 per-sample matrices, no annotations deposited | GSE267729 (confirmed) |
 | Gaylord 2025 (Laird lab, Science) | mouse and human across age, ~100,000† cells, 11 types incl. glia | GSE290743 (human object linked; confirm the mouse part) |
 | Benayoun cross-species ageing inputs | natural ageing cohorts and the VCD chemical-menopause model | PRJNA863443, E-MTAB-12889, GSE290742 |
 | Galligos/Gerton 2026 inflammaging | ageing with immune expansion; spatial twin | GSE317144 (+ GSE317297 spatial) |

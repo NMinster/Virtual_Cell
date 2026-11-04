@@ -46,6 +46,10 @@ harmonise:
   min_datasets_per_gene: 1         # with `union`, keep a gene seen in at least this many datasets
   unmapped_label: Unassigned       # author labels the crosswalk does not know keep their text and this major type
   drop_unmapped: false             # keep them in the corpus (flagged), out of the label-transfer scoring
+  # a dataset deposited without annotations (label_key null, no labels_file) gets its major type
+  # transferred from the labelled pooled shards (the T1 logistic regression); below this confidence
+  # a cell is Unassigned; crosswalk_status = transferred; T1 never trains or tests on such a dataset
+  transfer_min_confidence: 0.5
   # A dataset with held_out: true in the manifest is written as its own shard
   # (data/corpus/heldout_<name>.h5ad) and never into corpus.h5ad.
 

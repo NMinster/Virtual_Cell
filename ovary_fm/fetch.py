@@ -21,8 +21,11 @@ On Biowulf run it as a batch job, not on the login node:
 
 from __future__ import annotations
 
+import gzip
 import hashlib
 import json
+import shutil
+import tarfile
 import time
 import urllib.request
 from pathlib import Path
@@ -67,13 +70,67 @@ def download(url: str, dest: Path, overwrite: bool = False) -> dict:
     return record
 
 
+def _safe_extract(tar: tarfile.TarFile, dest: Path):
+    try:
+        tar.extractall(dest, filter="data")          # Python >= 3.12: no paths outside dest, no links
+    except TypeError:
+        members = [m for m in tar.getmembers() if not (m.name.startswith("/") or ".." in m.name.split("/"))]
+        tar.extractall(dest, members=members)
+
+
+def unpack(path: Path) -> Path | None:
+    """A GEO RAW tar -> a folder beside it (per-sample tars inside it unpacked one level);
+    an .h5ad.gz or .rds.gz -> the uncompressed file beside it. Returns what was produced."""
+    name = path.name
+    if name.endswith((".tar", ".tar.gz", ".tgz")):
+        dest = path.parent / name.split(".tar")[0].removesuffix(".tgz")
+        if dest.exists() and any(dest.iterdir()):
+            print(f"  = {dest.name}/ already unpacked")
+            return dest
+        dest.mkdir(parents=True, exist_ok=True)
+        with tarfile.open(path) as tar:
+            _safe_extract(tar, dest)
+        inner = [p for p in dest.rglob("*") if p.is_file() and p.name.endswith((".tar", ".tar.gz", ".tgz"))]
+        for p in inner:
+            sub = p.parent / p.name.split(".tar")[0].removesuffix(".tgz")
+            sub.mkdir(exist_ok=True)
+            with tarfile.open(p) as tar:
+                _safe_extract(tar, sub)
+        n = sum(1 for _ in dest.rglob("*") if _.is_file())
+        print(f"  unpacked {name} -> {dest.name}/ ({n} files{', ' + str(len(inner)) + ' inner tars' if inner else ''})")
+        return dest
+    if name.endswith((".h5ad.gz", ".rds.gz", ".h5.gz")):
+        out = path.with_suffix("")
+        if out.exists():
+            print(f"  = {out.name} already uncompressed")
+            return out
+        with gzip.open(path, "rb") as src, open(out, "wb") as dst:
+            shutil.copyfileobj(src, dst, 1 << 24)
+        print(f"  gunzipped {name} -> {out.name} ({out.stat().st_size:,} bytes)")
+        return out
+    return None
+
+
 def _fetch_urls(entry, folder: Path) -> list[dict]:
-    urls = (entry.get("source") or {}).get("urls") or []
+    src = entry.get("source") or {}
+    urls = src.get("urls") or []
     if not urls:
         print(f"  !! {entry['name']}: source.urls is empty (status {entry.get('status')}); "
               f"list the GEO supplementary folder and fill config/corpus.yaml")
         return []
-    return [download(url, folder / url.rsplit("/", 1)[-1]) for url in urls]
+    records = []
+    for url in urls:
+        rec = download(url, folder / url.rsplit("/", 1)[-1])
+        if src.get("unpack", True):
+            produced = unpack(Path(rec["path"]))
+            if produced is not None:
+                rec["unpacked_to"] = str(produced)
+        records.append(rec)
+    if any(str(r["path"]).endswith(".rds") for r in records):
+        rds = next(r["path"] for r in records if str(r["path"]).endswith(".rds"))
+        print(f"  a Seurat/SCE object: convert it before qc:\n"
+              f"    module load R && Rscript R/rds_to_mtx.R {rds} {folder}/")
+    return records
 
 
 def _fetch_census(entry, dest: Path) -> list[dict]:

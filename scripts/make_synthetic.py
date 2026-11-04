@@ -12,6 +12,9 @@ Four datasets, each with its own label vocabulary, modality and design:
 * synth_isola      cells, 4 + 4 animals, 3 vs 9 months (ageing), Isola-like labels
 * synth_benayoun   nuclei, 3 + 3 animals, young vs old (ageing), free-text labels
                    with one label the crosswalk does not know
+                   deposited in the GEO RAW layout (per-sample matrices + a cell_info table)
+* synth_unlabelled cells, 3 + 3 animals, young vs old, in the GEO RAW layout with NO labels:
+                   its major types are transferred in harmonise
 * synth_huang      cells, 3 animals x hCG 0 / 4 / 12 h (ovulation), Morris-like labels;
                    the immediate-early genes the benchmark excludes are planted too
 * synth_mouse_comp nuclei, 2 + 2 animals, sham vs ooph (surgery), the eight types;
@@ -89,7 +92,11 @@ DATASETS = [
      "map": {"3-month-old stage": "age_3mo", "9-month-old stage": "age_9mo"}, "control": "age_3mo",
      "age_days": {"age_3mo": 90, "age_9mo": 270}},
     {"name": "synth_benayoun", "modality": "nucleus", "vocab": "free", "label_col": "cell_type",
-     "cond_col": "age_group", "family": "ageing",
+     "cond_col": "age_group", "family": "ageing", "layout": "geo_raw",
+     "conditions": [("young", "young", 3, None), ("old", "old", 3, "AGEING_0.8")],
+     "map": {"young": "young", "old": "old"}, "control": "young", "age_days": {"young": 120, "old": 540}},
+    {"name": "synth_unlabelled", "modality": "cell", "vocab": "own", "label_col": "major_type",
+     "cond_col": "age_group", "family": "ageing", "layout": "geo_raw", "unlabelled": True,
      "conditions": [("young", "young", 3, None), ("old", "old", 3, "AGEING_0.8")],
      "map": {"young": "young", "old": "old"}, "control": "young", "age_days": {"young": 120, "old": 540}},
     {"name": "synth_huang", "modality": "cell", "vocab": "morris", "label_col": "Level1",
@@ -184,6 +191,31 @@ def make_dataset(rng, spec: dict, genes: list[str], base, programme, n_per_anima
     return ad.AnnData(X=X, obs=obs, var=var)
 
 
+def write_geo_raw(adata, spec: dict, folder: Path):
+    """The GEO 'RAW' deposit shape: <GSM>_<title>_{matrix.mtx,barcodes.tsv,features.tsv}.gz per
+    sample under GSExxx_RAW/, plus a cell_info table with the labels keyed by <sample>_<barcode>."""
+    import gzip
+
+    from scipy import io as sio
+
+    raw = folder / f"{spec['name'].upper()}_RAW"
+    raw.mkdir(parents=True, exist_ok=True)
+    rows = []
+    for i, animal in enumerate(adata.obs["animal"].unique()):
+        sub = adata[adata.obs["animal"] == animal]
+        prefix = f"GSM{i + 1:07d}_{animal}"
+        with gzip.open(raw / f"{prefix}_matrix.mtx.gz", "wb") as handle:
+            sio.mmwrite(handle, sub.X.T.tocsr().astype(np.int32))
+        with gzip.open(raw / f"{prefix}_barcodes.tsv.gz", "wt") as handle:
+            handle.write("\n".join(f"BC{j:06d}-1" for j in range(sub.n_obs)) + "\n")
+        feats = pd.DataFrame({"id": sub.var["gene_ids"].to_numpy(), "name": sub.var_names, "type": "Gene Expression"})
+        feats.to_csv(raw / f"{prefix}_features.tsv.gz", sep="\t", header=False, index=False)
+        for j in range(sub.n_obs):
+            rows.append({"cell": f"{prefix}_BC{j:06d}-1", spec["label_col"]: sub.obs[spec["label_col"]].iloc[j],
+                         "true_type": sub.obs["true_type"].iloc[j]})
+    pd.DataFrame(rows).to_csv(folder / f"{spec['name']}_cell_info.txt.gz", sep="\t", index=False)
+
+
 def write_side_files(out: Path, specs: list[dict]):
     repo_cw = yaml.safe_load((REPO_ROOT / "config" / "crosswalk.yaml").read_text(encoding="utf-8"))
     repo_bench = yaml.safe_load((REPO_ROOT / "config" / "benchmark.yaml").read_text(encoding="utf-8"))
@@ -197,6 +229,16 @@ def write_side_files(out: Path, specs: list[dict]):
                  "condition": {"key": spec["cond_col"], "map": spec["map"], "family": spec["family"],
                                "control": spec["control"]},
                  "status": "ready", "notes": "synthetic"}
+        if spec.get("layout") == "geo_raw":
+            # the GEO deposit: per-sample matrices, labels in a side table, conditions from the sample names
+            entry["path"] = str(out / "data" / "raw" / spec["name"])
+            entry["label_key"] = None
+            if not spec.get("unlabelled"):
+                entry["labels_file"] = {"path": str(out / "data" / "raw" / spec["name"] / f"{spec['name']}_cell_info.txt.gz"),
+                                        "index_col": "cell", "label_col": spec["label_col"]}
+            entry["animal_key"] = "gsm_sample"
+            entry["condition"] = {"key": "gsm_sample", "family": spec["family"], "control": spec["control"],
+                                  "patterns": [{"pattern": f"_{raw}_", "value": cond} for raw, cond in spec["map"].items()]}
         if spec.get("age_days"):
             entry["condition"]["age_days"] = spec["age_days"]
         if spec.get("time_h"):
@@ -210,6 +252,7 @@ def write_side_files(out: Path, specs: list[dict]):
     cw["datasets"] = {"synth_isola": repo_cw["datasets"]["isola2024"],
                       "synth_huang": repo_cw["datasets"]["morris2022"],
                       "synth_benayoun": {},                       # the global map, with one unmapped label
+                      "synth_unlabelled": {},                     # no labels at all: transferred in harmonise
                       "synth_mouse_comp": repo_cw["datasets"]["mouse_comp_30d"]}
     (out / "crosswalk.yaml").write_text(yaml.safe_dump(cw, sort_keys=False, allow_unicode=True), encoding="utf-8")
 
@@ -221,6 +264,8 @@ def write_side_files(out: Path, specs: list[dict]):
         {"name": "synth_isola_ageing", "dataset": "synth_isola", "family": "ageing", "control": "age_3mo",
          "perturbed": ["age_9mo"]},
         {"name": "synth_benayoun_ageing", "dataset": "synth_benayoun", "family": "ageing", "control": "young",
+         "perturbed": ["old"]},
+        {"name": "synth_unlabelled_ageing", "dataset": "synth_unlabelled", "family": "ageing", "control": "young",
          "perturbed": ["old"]},
         {"name": "synth_huang_ovulation", "dataset": "synth_huang", "family": "ovulation", "control": "hcg_0h",
          "perturbed": ["hcg_4h", "hcg_12h"]},
@@ -247,7 +292,10 @@ def main(argv=None):
         adata = make_dataset(rng, spec, genes, base, programme, args.n_per_animal, batch_genes)
         folder = out / "data" / "raw" / spec["name"]
         folder.mkdir(parents=True, exist_ok=True)
-        adata.write_h5ad(folder / f"{spec['name']}.h5ad")
+        if spec.get("layout") == "geo_raw":
+            write_geo_raw(adata, spec, folder)
+        else:
+            adata.write_h5ad(folder / f"{spec['name']}.h5ad")
         print(f"  {spec['name']}: {adata.n_obs:,} {spec['modality']}s x {adata.n_vars:,} genes, "
               f"{adata.obs['animal'].nunique()} animals -> {folder}")
     write_side_files(out, DATASETS)

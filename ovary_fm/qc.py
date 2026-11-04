@@ -13,6 +13,8 @@ table, so the corpus can be audited dataset by dataset.
 
 from __future__ import annotations
 
+import re
+
 import numpy as np
 import pandas as pd
 import scipy.sparse as sp
@@ -67,8 +69,20 @@ def _condition_columns(obs: pd.DataFrame, entry: dict) -> pd.DataFrame:
         cond = pd.Series([str(spec["value"])] * n, index=obs.index)
     elif spec.get("key") and spec["key"] in obs:
         raw = obs[spec["key"]].astype(str).str.strip()
+        patterns = spec.get("patterns") or []
         mapping = {str(k).strip().lower(): v for k, v in (spec.get("map") or {}).items()}
-        if mapping:
+        if patterns:
+            # an ordered list of {pattern, value}: the first regex that matches the raw value wins
+            compiled = [(re.compile(str(p["pattern"]), re.I), str(p["value"])) for p in patterns]
+            lookup = {}
+            for value in raw.unique():
+                lookup[value] = next((v for rx, v in compiled if rx.search(value)), None)
+            cond = raw.map(lookup)
+            unmapped = [v for v, hit in lookup.items() if hit is None]
+            if unmapped:
+                print(f"  !! condition values no pattern matches, kept as given: {unmapped[:10]}")
+            cond = cond.fillna(raw)
+        elif mapping:
             cond = raw.str.lower().map(mapping)
             unmapped = raw[cond.isna()].unique()
             if len(unmapped):
@@ -106,7 +120,7 @@ def apply_schema(adata, entry: dict, modality: str) -> None:
     new["animal"] = (obs[key].astype(str).to_numpy() if key and key in obs else name)
     if key and key not in obs:
         print(f"  !! animal_key {key!r} is not an obs column; the whole dataset counts as one animal")
-    label = entry.get("label_key")
+    label = entry.get("label_key") or (entry.get("labels_file") or {}).get("label_col")   # a side table's column counts
     new["author_label"] = (obs[label].astype(str).to_numpy() if label and label in obs else "unlabelled")
     if label and label not in obs:
         print(f"  !! label_key {label!r} is not an obs column; author_label = 'unlabelled'")
@@ -122,11 +136,48 @@ def apply_schema(adata, entry: dict, modality: str) -> None:
     adata.obs = new[SCHEMA + [c for c in new.columns if c.startswith("orig_")]]
 
 
+def _attach_labels_file(adata, entry: dict, cfg) -> None:
+    """Author labels deposited as a separate table (GEO 'cell_info' files): joined on the
+    cell names, with and without the per-sample prefix the GEO reader adds."""
+    spec = entry.get("labels_file")
+    if not spec:
+        return
+    path = dataset_path(cfg, {"path": spec["path"]})
+    if not path.exists():
+        print(f"  !! labels_file {path} is missing; author_label = 'unlabelled'")
+        return
+    sep = spec.get("sep") or ("\t" if ".tsv" in path.name or ".txt" in path.name else ",")
+    table = pd.read_csv(path, sep=sep, index_col=spec.get("index_col", 0), dtype=str)
+    table.index = table.index.astype(str)
+    col = spec.get("label_col")
+    if col not in table:
+        print(f"  !! labels_file: column {col!r} not in {list(table.columns)[:12]}; author_label = 'unlabelled'")
+        return
+    names = pd.Index(adata.obs_names.astype(str))
+    hit = table[col].reindex(names)
+    rate = float(hit.notna().mean())
+    if rate < 0.5 and "gsm_sample" in adata.obs:
+        bare = pd.Index([n.split("_", 1)[1] if "_" in n else n for n in names])
+        alt = table[col].reindex(bare)
+        if alt.notna().mean() > rate:
+            hit, rate = pd.Series(alt.to_numpy(), index=names), float(alt.notna().mean())
+    adata.obs[col] = hit.fillna("unlabelled").to_numpy()
+    print(f"  labels_file {path.name}: {rate:.1%} of cells matched on column {col!r}")
+    if rate < 0.5:
+        print("  !! fewer than half the cells matched: check the barcode format of the table against obs_names")
+    for extra in spec.get("copy_columns") or []:
+        if extra in table:
+            adata.obs[extra] = table[extra].reindex(names).to_numpy()
+
+
 def qc_one(cfg, entry: dict):
     q = cfg["qc"]
     name = entry["name"]
     species = entry.get("species", "mouse")
-    adata = standardise(read_counts(dataset_path(cfg, entry)), gene_key=entry.get("gene_key"), dataset=name)
+    raw = read_counts(dataset_path(cfg, entry))
+    _attach_labels_file(raw, entry, cfg)
+    print(f"  obs columns: {list(raw.obs.columns)[:20]}")
+    adata = standardise(raw, gene_key=entry.get("gene_key"), dataset=name)
     print(f"  read {adata.n_obs:,} cells x {adata.n_vars:,} genes")
     metrics = cell_metrics(adata, species, cfg)
     modality = entry.get("suspension_type")

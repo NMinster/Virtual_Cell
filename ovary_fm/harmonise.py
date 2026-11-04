@@ -103,6 +103,48 @@ def reindex_genes(adata, genes: pd.Index):
     return new
 
 
+def transfer_labels(cfg, shards: dict, manifest: list) -> None:
+    import anndata as ad
+
+    from .bench.t1 import _fit_predict, _subsample  # noqa: F401
+
+    unlabelled = [n for n, (a, _) in shards.items() if (a.obs["author_label"].astype(str) == "unlabelled").all()]
+    if not unlabelled:
+        return
+    labelled = [a for n, (a, held) in shards.items() if n not in unlabelled and not held
+                and (a.obs["crosswalk_status"].astype(str) != "unmapped").any()]
+    if not labelled:
+        print(f"  !! {unlabelled}: no labelled dataset to transfer from; they stay Unassigned")
+        return
+    genes = None
+    for a in labelled:
+        genes = pd.Index(a.var_names.astype(str)) if genes is None else genes.intersection(a.var_names.astype(str))
+    train = ad.concat([a[:, genes].copy() for a in labelled], join="inner", index_unique=None)
+    train = train[train.obs["crosswalk_status"].astype(str) != "unmapped"].copy()
+    t1cfg = dict(cfg["benchmark"]["t1"])
+    min_conf = float(cfg["harmonise"].get("transfer_min_confidence", 0.5))
+    for name in unlabelled:
+        a, held = shards[name]
+        common = genes.intersection(a.var_names.astype(str))
+        test = a[:, common].copy()
+        tr = train[:, common].copy()
+        pred, conf = _fit_predict(tr, test, t1cfg, int(cfg.get("random_state", 0)), None, return_confidence=True)
+        pred = np.where(conf >= min_conf, pred, cfg["harmonise"].get("unmapped_label", "Unassigned"))
+        a.obs["major_type"] = pd.Series(pred, index=a.obs_names).astype(str).to_numpy()
+        a.obs["transfer_confidence"] = conf
+        a.obs["crosswalk_status"] = np.where(conf >= min_conf, "transferred", "transferred_low_confidence")
+        terms = cfg["crosswalk"].get("cl_terms", {}).get("major", {})
+        a.obs["cl_id"] = [str((terms.get(m) or {}).get("cl_id") or "") for m in a.obs["major_type"]]
+        a.obs["cl_label"] = [str((terms.get(m) or {}).get("cl_label") or "") for m in a.obs["major_type"]]
+        share = float((conf >= min_conf).mean())
+        print(f"  {name}: labels transferred from {[x.obs['dataset'].iloc[0] for x in labelled]}; "
+              f"{share:.1%} of cells at confidence >= {min_conf}")
+        for row in manifest:
+            if row["dataset"] == name:
+                row["crosswalk_coverage"] = round(share, 4)
+                row["labels"] = "transferred"
+
+
 def run(cfg):
     write_provenance(cfg, "harmonise")
     h = cfg["harmonise"]
@@ -137,6 +179,12 @@ def run(cfg):
               f"{int((table['crosswalk_status'] == 'unmapped').sum())} unmapped label(s)")
     if not shards:
         raise FileNotFoundError("no QC shards found; run `ovary-fm qc` first")
+
+    # datasets deposited without annotations get their major type transferred from the
+    # labelled, pooled shards (logistic regression on the training set's variable genes, the
+    # T1 baseline); crosswalk_status = transferred, author_label stays 'unlabelled', and T1
+    # never trains or tests on them
+    transfer_labels(cfg, shards, manifest)
 
     pooled = [a for a, held in shards.values() if not held]
     if not pooled:

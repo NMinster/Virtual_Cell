@@ -58,7 +58,7 @@ def _subsample(labels: np.ndarray, max_per_class: int, rng) -> np.ndarray:
     return np.sort(np.concatenate(keep))
 
 
-def _fit_predict(train, test, t1cfg: dict, seed: int, rep: pd.DataFrame | None):
+def _fit_predict(train, test, t1cfg: dict, seed: int, rep: pd.DataFrame | None, return_confidence: bool = False):
     from sklearn.linear_model import LogisticRegression
     from sklearn.neighbors import KNeighborsClassifier
 
@@ -76,6 +76,9 @@ def _fit_predict(train, test, t1cfg: dict, seed: int, rep: pd.DataFrame | None):
         clf = LogisticRegression(C=float(t1cfg.get("C", 0.1)), max_iter=int(t1cfg.get("max_iter", 300)),
                                  class_weight="balanced")
     clf.fit(Xtr, ytr[sub])
+    if return_confidence:
+        proba = clf.predict_proba(Xte)
+        return clf.classes_[proba.argmax(axis=1)], proba.max(axis=1)
     return clf.predict(Xte)
 
 

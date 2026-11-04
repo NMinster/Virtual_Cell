@@ -72,13 +72,19 @@ freeze is dropped, not replaced):
 | Context | Dataset | Family | Control | Perturbed |
 | --- | --- | --- | --- | --- |
 | isola_ageing | isola2024 | ageing | age_3mo | age_9mo |
-| huang_ovulation | huang2025 | ovulation | hcg_0h | hcg_4h, hcg_12h |
-| morris_cycle | morris2022 | cycle | diestrus | proestrus, estrus, metestrus, hcg_8h |
+| wang_suh_ageing | wang_suh_estropause (GSE267729) | ageing | young | peri_regular, peri_irregular, post_estropausal |
+| huang_ovulation | huang2025 (GSE294534) | ovulation | hcg_0h | hcg_4h, hcg_12h |
+| schuh_ovulation_invivo | schuh2024_ovulation (GSE255274) | ovulation | invivo_hcg_0h | invivo 3, 6, 9, 12 h |
+| schuh_ovulation_invitro | schuh2024_ovulation (GSE255274) | ovulation | invitro_hcg_0h | invitro 3, 6, 9, 12 h |
+| morris_cycle | morris2022 (accession to confirm) | cycle | diestrus | proestrus, estrus, metestrus, hcg_8h |
 | mouse_comp_surgery (own, held out) | mouse_comp_30d | surgery | sham | ooph_30d |
 
 Contexts added before the freeze (section 10 lists them) follow the same
-template; the planned additions are the ex vivo ovulation series, the
-Wang/Suh estropausal cohort, the VCD subset and the knockout datasets.
+template; the planned additions are the VCD subset, the Galligos 2026
+cohort and the knockout datasets. Datasets deposited without annotations
+(Wang/Suh, Schuh) carry major types transferred from the labelled
+datasets; the transfer is the T1 logistic regression at confidence
+≥ 0.5, and those datasets are never T1 train or test sets.
 
 **Compartments**: the eight major types. A bundle is built only when
 both groups have ≥ 50 cells (`min_cells_hard`); the target is Arc's 400.
@@ -217,5 +223,6 @@ scANVI rows, the data-size and species curves, and every deviation.
 | Date | Section | Change | Reason | Scores seen before the change? |
 | --- | --- | --- | --- | --- |
 | 2026-11-04 | all | file created as a draft | — | no |
+| 2026-11-04 | §4 | contexts added from the GEO records read that day: wang_suh_ageing (GSE267729), schuh_ovulation_invivo and _invitro (GSE255274); morris_cycle's accession marked as unconfirmed (GSE192722 is a different study) | the records became readable; both families now have a second dataset, so b1 exists | no |
 | 2026-11-04 | §4, §6 | the scale is anchored on b0; b1 is scored as a model and is the bar; the expression replicate is corrected to full depth (÷ 4) | anchoring on b1 made the denominator collapse where the transfer sits near the ceiling (b0 at −34 on one member of the synthetic run); the half-depth expression replicate was noisier than the control copy on small effects | synthetic scores only |
 | 2026-11-04 | §4 | signal gate added (≥ 5 real DE genes after exclusions to score a bundle); PDS requires a pool of ≥ 5 scored bundles | the first synthetic run on Biowulf showed null compartments dominating the aggregate through the empty-set conventions and two-bundle PDS pools | synthetic scores only |

@@ -16,7 +16,18 @@ import numpy as np
 import pandas as pd
 import scipy.sparse as sp
 
+import re
+
 from .config import data_dir, resolve_path
+
+# GEO "RAW" deposits: one matrix per sample, flat files named <GSM>_<title>_matrix.mtx.gz
+# (+ barcodes / features or genes), or one 10x .h5 per sample
+GEO_SUFFIX = {
+    "matrix": re.compile(r"[_.-](matrix)\.mtx(\.gz)?$", re.I),
+    "barcodes": re.compile(r"[_.-](barcodes|cells)\.tsv(\.gz)?$", re.I),
+    "features": re.compile(r"[_.-](features|genes)\.tsv(\.gz)?$", re.I),
+    "h5": re.compile(r"(?:[_.-](?:filtered|raw)_feature_bc_matrix)?\.h5$", re.I),
+}
 
 # The obs schema every QC'd shard carries (docs/project_plan.md 4.2).
 SCHEMA = ["dataset", "species", "assay", "suspension_type", "strain", "sex", "animal",
@@ -83,19 +94,22 @@ def read_counts(path: Path):
         raise FileNotFoundError(f"{path} does not exist (run `ovary-fm fetch` or fix the manifest path)")
     if path.is_dir():
         h5ad = sorted(path.glob("*.h5ad"))
-        if h5ad:
+        if len(h5ad) == 1:
             return ad.read_h5ad(h5ad[0])
+        plain_mtx = sorted(p for p in path.rglob("matrix.mtx*") if p.name.lower().startswith("matrix.mtx"))
+        if len(plain_mtx) == 1:
+            return _read_mtx_dir(plain_mtx[0].parent)
+        groups = geo_raw_groups(path)
+        if groups:
+            return _read_geo_raw(groups)
         h5 = sorted(p for p in path.glob("*.h5") if "raw" not in p.name.lower()) or sorted(path.glob("*.h5"))
-        if h5:
+        if len(h5) == 1:
             return sc.read_10x_h5(h5[0])
-        mtx = sorted(path.rglob("matrix.mtx*"))
-        if mtx:
-            return _read_mtx_dir(mtx[0].parent)
         csv = sorted(p for p in list(path.glob("*.csv*")) + list(path.glob("*.tsv*"))
-                     if "meta" not in p.name.lower())
+                     if "meta" not in p.name.lower() and "cell_info" not in p.name.lower())
         if csv:
             return _read_csv_matrix(csv[0], path)
-        raise FileNotFoundError(f"no .h5ad, .h5, matrix.mtx or csv matrix under {path} "
+        raise FileNotFoundError(f"no .h5ad, .h5, matrix.mtx, GEO per-sample matrices or csv matrix under {path} "
                                 f"(a Seurat .rds is converted first with R/rds_to_mtx.R)")
     if path.suffix == ".h5ad":
         return ad.read_h5ad(path)
@@ -104,6 +118,71 @@ def read_counts(path: Path):
     if path.suffix in (".csv", ".tsv", ".gz"):
         return _read_csv_matrix(path, path.parent)
     raise ValueError(f"cannot read {path}")
+
+
+def geo_raw_groups(folder: Path) -> dict:
+    """prefix -> {kind: path} for every per-sample matrix set under a folder:
+    flat <GSM>_<title>_{matrix.mtx,barcodes.tsv,features.tsv}(.gz) triplets, per-sample
+    10x .h5 files, or one matrix.mtx folder per sample."""
+    groups = {}
+    for file in sorted(folder.rglob("*")):
+        if not file.is_file() or file.suffix == ".h5ad":
+            continue
+        name = file.name
+        if name.lower().startswith("matrix.mtx"):           # a 10x folder per sample
+            groups.setdefault(file.parent.name, {})["dir"] = file.parent
+            continue
+        for kind, rx in GEO_SUFFIX.items():
+            m = rx.search(name)
+            if m:
+                prefix = name[: m.start()]
+                if kind == "h5" and (not prefix or name.endswith(".h5ad")):
+                    continue
+                groups.setdefault(prefix, {})[kind] = file
+                break
+    complete = {}
+    for prefix, g in groups.items():
+        if "dir" in g or "h5" in g or {"matrix", "barcodes", "features"} <= set(g):
+            complete[prefix] = g
+    return complete
+
+
+def _read_geo_sample(prefix: str, g: dict):
+    import anndata as ad
+    import scanpy as sc
+    from scipy import io as sio
+
+    if "dir" in g:
+        a = sc.read_10x_mtx(g["dir"], var_names="gene_symbols", make_unique=True)
+    elif "h5" in g:
+        a = sc.read_10x_h5(g["h5"])
+    else:
+        M = sio.mmread(str(g["matrix"]))
+        X = sp.csr_matrix(M.T.astype(np.float32))                      # mtx is genes x cells
+        feats = pd.read_csv(g["features"], sep="\t", header=None, dtype=str)
+        symbols = feats[1] if feats.shape[1] >= 2 else feats[0]
+        var = pd.DataFrame(index=pd.Index(symbols.astype(str).to_numpy()))      # a plain index: no column name
+        if feats.shape[1] >= 2:
+            var["gene_ids"] = feats[0].astype(str).to_numpy()
+        barcodes = pd.read_csv(g["barcodes"], sep="\t", header=None, dtype=str)[0].astype(str)
+        a = ad.AnnData(X=X, obs=pd.DataFrame(index=pd.Index(barcodes.to_numpy())), var=var)
+    a.var_names_make_unique()
+    a.obs["gsm_sample"] = prefix
+    a.obs_names = pd.Index([f"{prefix}_{b}" for b in a.obs_names.astype(str)])
+    return a
+
+
+def _read_geo_raw(groups: dict):
+    import anndata as ad
+
+    adatas = []
+    for prefix, g in sorted(groups.items()):
+        a = _read_geo_sample(prefix, g)
+        print(f"  sample {prefix}: {a.n_obs:,} cells x {a.n_vars:,} genes")
+        adatas.append(a)
+    merged = ad.concat(adatas, join="outer", merge="first", index_unique=None)
+    merged.obs["gsm_sample"] = merged.obs["gsm_sample"].astype(str)
+    return merged
 
 
 def _read_mtx_dir(folder: Path):
@@ -206,13 +285,26 @@ def inspect(cfg):
                     shape = tuple(X.attrs["shape"]) if "shape" in X.attrs else X.shape
             except Exception:
                 shape = "?"
+        samples = None
+        if path.is_dir():
+            groups = geo_raw_groups(path)
+            if groups:
+                samples = sorted(groups)
         rows.append({"dataset": entry["name"], "enabled": entry.get("enabled", False),
                      "tier": entry.get("tier"), "species": entry.get("species"),
                      "source": (entry.get("source") or {}).get("type", "local"),
                      "accession": (entry.get("source") or {}).get("accession"),
                      "status": entry.get("status", "ready"), "held_out": entry.get("held_out", False),
                      "path": str(path), "on_disk": path.exists(), "shape": shape,
+                     "n_samples": len(samples) if samples else None,
                      "qc_shard": qc_shard_path(cfg, entry["name"]).exists()})
+        if samples:
+            print(f"  {entry['name']}: {len(samples)} per-sample matrices; the gsm_sample values the manifest's "
+                  f"patterns must match:")
+            for name in samples[:40]:
+                print(f"    {name}")
+            if len(samples) > 40:
+                print(f"    ... {len(samples) - 40} more")
     frame = pd.DataFrame(rows)
     with pd.option_context("display.max_columns", 20, "display.width", 200, "display.max_colwidth", 60):
         print(frame.to_string(index=False))

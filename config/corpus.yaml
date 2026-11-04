@@ -3,26 +3,33 @@
 # ---------------------------------------------------------------------
 # One entry per dataset. `fetch` downloads what `source` says into
 # data/raw/<name>/ (a cellxgene_collection source goes through the Census
-# API; a url source is a plain download through the proxy; local is read
-# in place; scbasecount is an h5ad in the Arc bucket, see
-# scripts/scbasecount_metadata.py). `qc` reads `path` (an .h5ad, a 10x
-# .h5, an mtx folder or a csv count matrix; a Seurat .rds is converted
-# first with R/rds_to_mtx.R) and writes data/corpus/qc/<name>.h5ad with
-# the obs schema in docs/project_plan.md section 4.2.
+# API; a url source is a plain download through the proxy, unpacked when
+# it is a tar or a .gz object; local is read in place; scbasecount is an
+# h5ad in the Arc bucket). `qc` reads `path`: an .h5ad, a 10x .h5, a
+# folder with one matrix, a folder with GEO's per-sample matrices
+# (<GSM>_<title>_matrix.mtx.gz + barcodes + features, or per-sample .h5),
+# a csv count matrix, or an mtx folder written by R/rds_to_mtx.R from a
+# Seurat .rds. It writes data/corpus/qc/<name>.h5ad with the obs schema.
 #
 # Fields:
 #   enabled          only enabled datasets are fetched, QC'd and pooled
 #   tier             A curated atlas or condition study; B scBaseCount; C human; D other species
 #   suspension_type  cell | nucleus | null (inferred from the tells in qc)
-#   label_key        obs column with the authors' labels (the crosswalk maps it)
-#   animal_key       obs column naming the animal (the replicate unit); null = one animal per file
-#   condition        key: obs column; map: raw value -> condition name; family; control;
-#                    time_h / age_days per condition (optional); value: a constant when there is no column
+#   label_key        obs column with the authors' labels (the crosswalk maps it); null = none
+#   labels_file      a side table of labels (GEO cell_info): {path, index_col, label_col}
+#                    with no label_key and no labels_file, `harmonise` TRANSFERS the major
+#                    type from the labelled datasets (crosswalk_status = transferred)
+#   animal_key       obs column naming the animal; `gsm_sample` is the per-sample prefix the
+#                    GEO reader adds (one library = one animal unless the metadata says more)
+#   condition        key: obs column; map: raw value -> condition, or patterns: an ordered
+#                    list of {pattern (regex, case-insensitive), value}, first match wins;
+#                    family; control; time_h / age_days per condition
 #   held_out         never pooled into corpus.h5ad; written as its own shard (the own data)
-#   status           ready | fill_in: what still has to be filled from the download
+#   status           ready | fill_in: what still has to be filled after the download
+#                    (`ovary-fm inspect` lists the gsm_sample values the patterns must match;
+#                    `qc` prints the obs columns)
 #
-# Counts marked † are from the research memo's search snippets and are
-# confirmed on download (docs/first_results_checklist.md, step 4).
+# GEO records read on 2026-11-04 (docs/first_results_checklist.md step 2).
 # =====================================================================
 datasets:
 
@@ -54,93 +61,128 @@ datasets:
     status: ready
     notes: "Isola/Ocañas et al. 2024, Nature Aging 4:145. 14,349 cells, four ovaries per age. Already the reference atlas of Mouse_Compensatory."
 
-  - name: morris2022
-    enabled: true
-    tier: A
-    species: mouse
-    suspension_type: cell
-    assay: "10x"
-    strain: null
-    sex: female
-    source:
-      type: url
-      accession: GSE192722
-      urls: []                     # fill from https://ftp.ncbi.nlm.nih.gov/geo/series/GSE192nnn/GSE192722/suppl/ (checklist step 3)
-    path: data/raw/morris2022      # the folder the files land in; qc reads an h5ad / mtx / csv inside it
-    label_key: Level1              # Level0 (six types) or Level1 (follicle and corpus luteum states)
-    gene_key: null
-    animal_key: null               # fill in: the per-mouse column once the object is read
-    condition:
-      key: stage                   # fill in: the column with proestrus / estrus / metestrus / diestrus / PMSG-hCG 8 h / lactation
-      map: {proestrus: proestrus, estrus: estrus, metestrus: metestrus, diestrus: diestrus,
-            "pmsg_hcg_8h": hcg_8h, lactating: lactating}
-      family: cycle
-      control: diestrus
-      time_h: {hcg_8h: 8}
-    status: fill_in
-    notes: "Morris, Meinsohn et al. 2022, eLife 11:e77239, the cycling adult ovary (Pépin lab). >34,000† cells; the 28,014-cell reused object is the cell2location reference of Mantri 2024. The only estrous-staged whole-ovary atlas."
-
   - name: huang2025
     enabled: true
     tier: A
     species: mouse
     suspension_type: cell
-    assay: "10x"
+    assay: "10x 3'"
     strain: CD-1
     sex: female
     source:
       type: url
       accession: GSE294534
-      urls: []                     # fill from the GEO supplementary folder (checklist step 3)
-    path: data/raw/huang2025
-    label_key: null                # fill in
+      urls:
+        - https://ftp.ncbi.nlm.nih.gov/geo/series/GSE294nnn/GSE294534/suppl/GSE294534_10x_update.rds   # 5.5 GB Seurat object
+    path: data/raw/huang2025       # after: module load R && Rscript R/rds_to_mtx.R data/raw/huang2025/GSE294534_10x_update.rds data/raw/huang2025/
+    label_key: null                # fill in from meta.csv (qc prints its columns; the paper has 16 clusters with names)
     gene_key: null
-    animal_key: null               # fill in: n = 3 per time point
+    animal_key: orig.ident         # six libraries: 0 / 4 / 12 h x (ABC, DEF), each pooling three mice -> the replicate unit is the
+                                   # library unless meta.csv carries a per-mouse (hashtag) column; fill in if it does
     condition:
-      key: timepoint               # fill in
-      map: {"0h": hcg_0h, "4h": hcg_4h, "12h": hcg_12h}
+      key: orig.ident
+      patterns:
+        - {pattern: "12 ?h", value: hcg_12h}
+        - {pattern: "(?<![0-9])4 ?h", value: hcg_4h}
+        - {pattern: "(?<![0-9])0 ?h", value: hcg_0h}
       family: ovulation
       control: hcg_0h
       time_h: {hcg_0h: 0, hcg_4h: 4, hcg_12h: 12}
     status: fill_in
-    notes: "Huang et al. 2025, PLOS Biology (Shalek lab): PMSG/hCG, 0 / 4 / 12 h post-hCG, 25,714† cells, paired MERFISH of the contralateral ovary."
+    notes: "Huang, Kratka, Pea et al. 2025, PLOS Biology 23(6):e3003193 (PMID 40554460). Paired scRNA-seq and spatial, 0 / 4 / 12 h post-hCG. GEO lists six scRNA samples: '0hr post-hCG (ABC)', '0hr (DEF)', '4hr (ABC)' ... The deposit is one Seurat .rds; convert, then set label_key from meta.csv."
 
   - name: wang_suh_estropause
-    enabled: false
+    enabled: true
+    tier: A
+    species: mouse
+    suspension_type: cell
+    assay: "10x 3'"
+    sex: female
+    source:
+      type: url
+      accession: GSE267729
+      urls:
+        - https://ftp.ncbi.nlm.nih.gov/geo/series/GSE267nnn/GSE267729/suppl/GSE267729_RAW.tar      # 1.2 GB, MTX + TSV per sample
+    path: data/raw/wang_suh_estropause   # the unpacked GSE267729_RAW/ holds 18 per-sample matrices
+    label_key: null                # no annotations in the deposit: major types are transferred in harmonise
+    animal_key: gsm_sample         # mouse_young_regular_ovary1 ... one ovary per library
+    condition:
+      key: gsm_sample
+      patterns:                    # ordered: irregular before peri, the sorted senescent cells first
+        - {pattern: "spider|bgal|b-gal|senesc", value: senescent_sorted}
+        - {pattern: "irregular", value: peri_irregular}
+        - {pattern: "peri", value: peri_regular}
+        - {pattern: "young", value: young}
+        - {pattern: "post", value: post_estropausal}
+      family: ageing
+      control: young
+    status: fill_in                # confirm the patterns against `ovary-fm inspect` once unpacked
+    notes: "Wang, Yang, Jin et al. 2026, PNAS 123(30):e2600323123 (PMID 42479833; Suh lab). 18 samples: young regular, peri-estropausal regular vs irregular, post-estropausal, plus SPiDER-βGal-high sorted cells from post-estropausal ovaries (a sorted subpopulation: kept as its own condition, not a context)."
+
+  - name: schuh2024_ovulation
+    enabled: true
+    tier: A
+    species: mouse
+    suspension_type: cell
+    assay: "10x 3'"
+    sex: female
+    source:
+      type: url
+      accession: GSE255274
+      urls:
+        - https://ftp.ncbi.nlm.nih.gov/geo/series/GSE255nnn/GSE255274/suppl/GSE255274_RAW.tar      # 4.4 GB, MTX + TSV, 28 samples
+    path: data/raw/schuh2024_ovulation
+    label_key: null                # no annotations in the deposit: transferred in harmonise (isolated follicles: mostly granulosa, cumulus, oocytes)
+    animal_key: gsm_sample         # 'In vivo setup, 0hr post-hCG administration, replicate 2' ... one replicate per library
+    condition:
+      key: gsm_sample
+      patterns:                    # two factors in one value: the setup and the time point; confirm against `inspect`
+        - {pattern: "vitro.*12 ?h|12 ?h.*vitro", value: invitro_hcg_12h}
+        - {pattern: "vitro.*9 ?h|9 ?h.*vitro", value: invitro_hcg_9h}
+        - {pattern: "vitro.*6 ?h|6 ?h.*vitro", value: invitro_hcg_6h}
+        - {pattern: "vitro.*3 ?h|3 ?h.*vitro", value: invitro_hcg_3h}
+        - {pattern: "vitro.*0 ?h|0 ?h.*vitro", value: invitro_hcg_0h}
+        - {pattern: "12 ?h", value: invivo_hcg_12h}
+        - {pattern: "9 ?h", value: invivo_hcg_9h}
+        - {pattern: "6 ?h", value: invivo_hcg_6h}
+        - {pattern: "3 ?h", value: invivo_hcg_3h}
+        - {pattern: "0 ?h", value: invivo_hcg_0h}
+      family: ovulation
+      control: invivo_hcg_0h
+      time_h: {invivo_hcg_0h: 0, invivo_hcg_3h: 3, invivo_hcg_6h: 6, invivo_hcg_9h: 9, invivo_hcg_12h: 12,
+               invitro_hcg_0h: 0, invitro_hcg_3h: 3, invitro_hcg_6h: 6, invitro_hcg_9h: 9, invitro_hcg_12h: 12}
+    status: fill_in
+    notes: "Thomas, Marx, Penir, Schuh 2024, Nature Cell Biology (ex vivo imaging of ovulation). scRNA-seq of ovulating FOLLICLES at 0 / 3 / 6 / 9 / 12 h post-hCG, in vivo and in vitro setups, replicates. The second ovulation dataset: the b1 transfer source for Huang 2025 (nearest time point)."
+
+  - name: morris2022
+    enabled: false                 # enable once the accession is found (checklist step 2)
     tier: A
     species: mouse
     suspension_type: cell
     assay: "10x"
     sex: female
-    source: {type: url, accession: GSE267729, urls: []}
-    path: data/raw/wang_suh_estropause
-    label_key: null
+    source:
+      type: url
+      accession: null              # GSE192722, carried over from Mouse_Compensatory, is WRONG: that record is Lustgarten et al.,
+                                   # human theca cells (Weill Cornell). Read the eLife 2022 data availability statement.
+      urls: []
+    path: data/raw/morris2022
+    label_key: Level1              # Level0 (six types) or Level1 (follicle and corpus luteum states), if the deposit carries them
     animal_key: null
     condition:
-      key: group
-      map: {young: young, peri_regular: peri_regular, peri_irregular: peri_irregular, post: post_estropausal}
-      family: ageing
-      control: young
+      key: stage
+      patterns:
+        - {pattern: "pmsg|hcg", value: hcg_8h}
+        - {pattern: "lactat", value: lactating}
+        - {pattern: "proestrus", value: proestrus}
+        - {pattern: "metestrus", value: metestrus}
+        - {pattern: "diestrus", value: diestrus}
+        - {pattern: "estrus", value: estrus}
+      family: cycle
+      control: diestrus
+      time_h: {hcg_8h: 8}
     status: fill_in
-    notes: "Wang, Suh et al., estropausal transition (bioRxiv 2024; PNAS 2026). Estrous-staged; the accession is from a search snippet."
-
-  - name: ovulation_exvivo_2024
-    enabled: false
-    tier: A
-    species: mouse
-    suspension_type: cell
-    source: {type: scbasecount, srx: [SRX23566711, SRX23566738], urls: []}   # the 0/3/6/9/12 h series, incl. in vitro arms; expand from scripts/scbasecount_metadata.py
-    path: data/raw/ovulation_exvivo_2024
-    label_key: null
-    animal_key: null
-    condition:
-      key: time_h
-      map: {"0": hcg_0h, "3": hcg_3h, "6": hcg_6h, "9": hcg_9h, "12": hcg_12h}
-      family: ovulation
-      control: hcg_0h
-      time_h: {hcg_0h: 0, hcg_3h: 3, hcg_6h: 6, hcg_9h: 9, hcg_12h: 12}
-    status: fill_in
-    notes: "Nature Cell Biology 2024 ex vivo follicle series; confirm the GEO series and the sample-to-time mapping from the SRA records."
+    notes: "Morris, Meinsohn et al. 2022, eLife 11:e77239, the cycling adult ovary (Pépin lab). >34,000 cells; the 28,014-cell reused object is the cell2location reference of Mantri 2024. The only estrous-staged whole-ovary atlas."
 
   - name: gaylord2025_mouse
     enabled: false
@@ -152,7 +194,7 @@ datasets:
     animal_key: null
     condition: {key: age_group, map: {}, family: ageing, control: young}
     status: fill_in
-    notes: "Gaylord et al. 2025, Science 390 (Laird lab): mouse and human across age, ~100,000† cells, 11 types incl. glia. The linked accession is the human object; confirm the mouse one."
+    notes: "Gaylord et al. 2025, Science 390 (Laird lab): mouse and human across age, ~100,000 cells, 11 types incl. glia. The linked accession is the human object; confirm the mouse one."
 
   - name: benayoun_vcd
     enabled: false
@@ -218,6 +260,60 @@ datasets:
 
   # --- Tier C, human (the second species; ablation only) ------------------------
 
+  - name: gse329417_postmenopausal
+    enabled: false
+    tier: C
+    species: human
+    suspension_type: nucleus
+    assay: "10x Flex (fixed RNA profiling)"
+    sex: female
+    source:
+      type: url
+      accession: GSE329417
+      urls:
+        - https://ftp.ncbi.nlm.nih.gov/geo/series/GSE329nnn/GSE329417/suppl/GSE329417_human_ovary_snucRNAseq_final_annotated_atlas.h5ad.gz   # 5.4 GB, 37 fine states
+        - https://ftp.ncbi.nlm.nih.gov/geo/series/GSE329nnn/GSE329417/suppl/GSE329417_human_ovary_snucRNAseq_public_donor_metadata.tsv.gz
+        - https://ftp.ncbi.nlm.nih.gov/geo/series/GSE329nnn/GSE329417/suppl/GSE329417_human_ovary_snucRNAseq_10xFlex_sample_processing_metadata.xlsx
+    path: data/raw/gse329417_postmenopausal/GSE329417_human_ovary_snucRNAseq_final_annotated_atlas.h5ad   # gunzipped by fetch
+    label_key: null                # fill in from the h5ad obs (qc prints the columns): the 37 fine states and their coarse level
+    gene_key: null
+    animal_key: null               # fill in: the donor column (28 donors, 64 samples)
+    condition: {key: null, map: {}, family: ageing, control: null}   # age is continuous (50-84 y): bin it in patterns once the column is known
+    status: fill_in
+    notes: "Byrne, Martin, Soygur et al. 2026 (bioRxiv May 2026, PMID 42182191; Melov lab, Buck Institute). 439,011 nuclei, 64 samples, 28 donors aged 50-84, no ovarian neoplasia. 2.5x all normal human ovary in Census."
+
+  - name: gse267315_human_ageing
+    enabled: false
+    tier: C
+    species: human
+    suspension_type: nucleus
+    assay: "10x snRNA-seq"
+    sex: female
+    source:
+      type: url
+      accession: GSE267315
+      urls:
+        - https://ftp.ncbi.nlm.nih.gov/geo/series/GSE267nnn/GSE267315/suppl/GSE267315_RAW.tar      # 3.3 GB: MTX + TSV (snRNA) and GEF (Stereo-seq; ignored)
+        - https://ftp.ncbi.nlm.nih.gov/geo/series/GSE267nnn/GSE267315/suppl/GSE267315_snRNA_cell_info.txt.gz
+    path: data/raw/gse267315_human_ageing
+    label_key: null
+    labels_file:
+      path: data/raw/gse267315_human_ageing/GSE267315_snRNA_cell_info.txt.gz
+      index_col: 0                 # fill in: the cell-name column and the label column of the table
+      label_col: null
+    animal_key: gsm_sample         # snRNA_age32, snRNA_age34, snRNA_age42 (+ age 12)
+    condition:
+      key: gsm_sample
+      patterns:
+        - {pattern: "age ?12", value: age_12y}
+        - {pattern: "age ?32", value: age_32y}
+        - {pattern: "age ?34", value: age_34y}
+        - {pattern: "age ?42", value: age_42y}
+      family: ageing
+      control: age_32y
+    status: fill_in
+    notes: "Zhang, Guo et al. 2026, Aging Cell 25(1):e70288 (PMID 41243550; Fudan). 57,970 nuclei from ovaries aged 12, 32, 34 and 42, plus Stereo-seq spatial (raw reads in GSA HRA010703)."
+
   - name: jin_snrna_menopause
     enabled: false
     tier: C
@@ -231,16 +327,3 @@ datasets:
     condition: {key: development_stage, map: {}, family: ageing, control: null}
     status: fill_in
     notes: "42,568 nuclei, 23-52 y; the only human ovary snRNA-seq in Census."
-
-  - name: gse329417_postmenopausal
-    enabled: false
-    tier: C
-    species: human
-    suspension_type: nucleus
-    source: {type: url, accession: GSE329417, urls: []}
-    path: data/raw/gse329417_postmenopausal
-    label_key: null
-    animal_key: null
-    condition: {key: age_group, map: {}, family: ageing, control: null}
-    status: fill_in
-    notes: "439,011† nuclei, 64 samples, 28 postmenopausal donors (GEO 2026-05-11); 2.5x all normal human ovary in Census."

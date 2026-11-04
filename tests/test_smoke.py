@@ -150,6 +150,10 @@ def test_qc_infers_the_modality_and_keeps_the_design(synthetic):
     assert qc.loc["synth_benayoun", "suspension_type"] == "nucleus"
     assert qc.loc["synth_mouse_comp", "suspension_type"] == "nucleus"
     assert qc.loc["synth_isola", "n_animals"] == 8 and qc.loc["synth_huang", "n_animals"] == 9
+    assert qc.loc["synth_benayoun", "n_animals"] == 6            # read from the GEO RAW layout, one matrix per animal
+    assert qc.loc["synth_benayoun", "n_author_labels"] == 9      # the labels came from the cell_info table
+    assert qc.loc["synth_unlabelled", "n_author_labels"] == 1    # 'unlabelled'
+    assert set(qc.loc["synth_unlabelled", "conditions"].split(";")) == {"young", "old"}   # regex patterns on the sample names
     assert set(qc.loc["synth_huang", "conditions"].split(";")) == {"hcg_0h", "hcg_4h", "hcg_12h"}
     for name in qc.index:
         assert qc.loc[name, "cells_out"] >= 0.8 * qc.loc[name, "cells_in"]
@@ -170,7 +174,14 @@ def test_harmonise_crosswalk_and_corpus(synthetic):
     assert list(unmapped["author_label"]) == ["mystery cells"]
     assert (review.loc[review["author_label"] == "Epithelium B", "major_type"] == "Endothelial").all()
     corpus = ad.read_h5ad(synthetic["data"] / "corpus" / "corpus.h5ad")
-    assert set(corpus.obs["dataset"]) == {"synth_isola", "synth_benayoun", "synth_huang"}   # the held-out one is not pooled
+    assert set(corpus.obs["dataset"]) == {"synth_isola", "synth_benayoun", "synth_unlabelled", "synth_huang"}
+    # the unlabelled dataset got its types transferred, and they are right
+    un = corpus[corpus.obs["dataset"] == "synth_unlabelled"]
+    assert set(un.obs["crosswalk_status"].astype(str)) <= {"transferred", "transferred_low_confidence"}
+    assert manifest.loc["synth_unlabelled", "labels"] == "transferred"
+    cell_info = pd.read_csv(synthetic["data"] / "raw" / "synth_unlabelled" / "synth_unlabelled_cell_info.txt.gz", sep="\t").set_index("cell")
+    bare = [i.split(":", 1)[1] for i in un.obs_names]
+    assert (un.obs["major_type"].astype(str).to_numpy() == cell_info["true_type"].reindex(bare).to_numpy()).mean() > 0.95
     assert (synthetic["data"] / "corpus" / "heldout_synth_mouse_comp.h5ad").exists()
     assert "suspension_type" in corpus.obs and set(corpus.obs["suspension_type"]) == {"cell", "nucleus"}
     truth = corpus.obs["major_type"].astype(str)
@@ -194,7 +205,7 @@ def test_bench_ceilings_and_baselines(synthetic):
     assert (scorable["replicate_level"] == "animals").all()
     # the planted ageing response comes out differential in the stroma, and the b1 transfer exists across the two ageing sets
     iso = scorable[(scorable["context"] == "synth_isola_ageing") & (scorable["compartment"] == "Stromal")].iloc[0]
-    assert iso["n_de_real"] >= 4 and iso["n_b1_sources"] == 1
+    assert iso["n_de_real"] >= 4 and iso["n_b1_sources"] >= 1          # the other ageing datasets (labelled or transferred)
     de = pd.read_csv(synthetic["results"] / "tables" / "bench" / "de" / "synth_isola_ageing_age_9mo_Stromal.csv").set_index("gene")
     assert de.loc["Cdkn1a", "sig"] and de.loc["Cdkn1a", "lfc"] > 1 and de.loc["Col1a1", "lfc"] < -0.5
     # ovulation has no other dataset to transfer from
@@ -236,12 +247,12 @@ def test_scores_are_anchored(synthetic):
     assert set(stub["bundle_id"]) == set(ceilings.loc[ceilings["scored"] == True, "bundle_id"])
     assert (ceilings["scored"] == True).sum() < ceilings["scorable"].sum()      # the gate removes the null compartments
     summary = pd.read_csv(tables / "scores_stub_summary.csv")
-    assert summary["context"].iloc[-1] == "OVERALL" and summary.shape[0] == 5
+    assert summary["context"].iloc[-1] == "OVERALL" and summary.shape[0] == 6
 
 
 def test_t1_recovers_the_types(synthetic):
     t1 = pd.read_csv(synthetic["results"] / "tables" / "bench" / "t1_logreg.csv").set_index("held_out")
-    assert set(t1.index) == {"synth_isola", "synth_benayoun", "synth_huang", "synth_mouse_comp"}
+    assert set(t1.index) == {"synth_isola", "synth_benayoun", "synth_huang", "synth_mouse_comp"}   # never the unlabelled one
     assert (t1["macro_f1"] > 0.85).all()
     assert t1.loc["synth_mouse_comp", "role"] == "test_only"
     per_type = pd.read_csv(synthetic["results"] / "tables" / "bench" / "t1_logreg_per_type.csv")

@@ -71,17 +71,33 @@ t3:
     drug: []
     surgery: []
 
+  # a context whose dataset is not in the corpus is skipped and listed in reference.json
   contexts:
     - name: isola_ageing
       dataset: isola2024
       family: ageing
       control: age_3mo
       perturbed: [age_9mo]
+    - name: wang_suh_ageing
+      dataset: wang_suh_estropause
+      family: ageing
+      control: young
+      perturbed: [peri_regular, peri_irregular, post_estropausal]   # senescent_sorted is a sorted subpopulation, not a context
     - name: huang_ovulation
       dataset: huang2025
       family: ovulation
       control: hcg_0h
       perturbed: [hcg_4h, hcg_12h]
+    - name: schuh_ovulation_invivo
+      dataset: schuh2024_ovulation
+      family: ovulation
+      control: invivo_hcg_0h
+      perturbed: [invivo_hcg_3h, invivo_hcg_6h, invivo_hcg_9h, invivo_hcg_12h]
+    - name: schuh_ovulation_invitro
+      dataset: schuh2024_ovulation
+      family: ovulation
+      control: invitro_hcg_0h
+      perturbed: [invitro_hcg_3h, invitro_hcg_6h, invitro_hcg_9h, invitro_hcg_12h]
     - name: morris_cycle
       dataset: morris2022
       family: cycle
