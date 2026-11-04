@@ -103,19 +103,20 @@ def reindex_genes(adata, genes: pd.Index):
     return new
 
 
-def transfer_labels(cfg, shards: dict, manifest: list) -> None:
+def transfer_labels(cfg, shards: dict, manifest: list) -> list:
+    """Returns the names of the datasets whose labels were transferred."""
     import anndata as ad
 
     from .bench.t1 import _fit_predict, _subsample  # noqa: F401
 
     unlabelled = [n for n, (a, _) in shards.items() if (a.obs["author_label"].astype(str) == "unlabelled").all()]
     if not unlabelled:
-        return
+        return []
     labelled = [a for n, (a, held) in shards.items() if n not in unlabelled and not held
                 and (a.obs["crosswalk_status"].astype(str) != "unmapped").any()]
     if not labelled:
         print(f"  !! {unlabelled}: no labelled dataset to transfer from; they stay Unassigned")
-        return
+        return []
     genes = None
     for a in labelled:
         genes = pd.Index(a.var_names.astype(str)) if genes is None else genes.intersection(a.var_names.astype(str))
@@ -143,6 +144,7 @@ def transfer_labels(cfg, shards: dict, manifest: list) -> None:
             if row["dataset"] == name:
                 row["crosswalk_coverage"] = round(share, 4)
                 row["labels"] = "transferred"
+    return unlabelled
 
 
 def run(cfg):
@@ -184,7 +186,11 @@ def run(cfg):
     # labelled, pooled shards (logistic regression on the training set's variable genes, the
     # T1 baseline); crosswalk_status = transferred, author_label stays 'unlabelled', and T1
     # never trains or tests on them
-    transfer_labels(cfg, shards, manifest)
+    transferred = transfer_labels(cfg, shards, manifest)
+    for frame in review:
+        hit = frame["dataset"].isin(transferred)
+        frame.loc[hit, "crosswalk_status"] = "transferred"
+        frame.loc[hit, "major_type"] = "(per cell, from the labelled datasets)"
 
     pooled = [a for a, held in shards.values() if not held]
     if not pooled:
