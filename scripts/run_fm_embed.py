@@ -136,6 +136,8 @@ def embed_scprint2(adata, args, out: Path):
                              "(environment-fm-scprint2.yml)") from exc
     taxon = MOUSE_TAXON if args.species == "mouse" else HUMAN_TAXON
     adata.obs["organism_ontology_term_id"] = taxon
+    print("[fm] scprint2 reads its ontologies from a laminDB instance: once, `lamin init --storage "
+          "/data/$USER/ovary_fm/lamin --name ovary_fm --modules bionty && scprint2 easy_setup`")
     if "gene_ids" in adata.var:
         adata.var["symbol"] = adata.var_names
         adata.var_names = adata.var["gene_ids"].astype(str).to_numpy()

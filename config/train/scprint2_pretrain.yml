@@ -1,47 +1,78 @@
 # =====================================================================
 # Arm A: scPRINT-2 medium, continued pretraining on the ovary corpus
 # ---------------------------------------------------------------------
-# THIS IS NOT A FILE scPRINT-2 LOADS AS IS. It is the plan's values, laid
-# out in the shape of their config/pretrain_medium.yml (cantinilab/
-# scPRINT-2, November 2026: 16 layers, d 512, "90M params"; docs/
-# pretrain.md; the SLURM recipe is 4 x A40-40GB, 16 CPU and 90 GB RAM per
-# GPU; base config max_len 2200, batch 64, n_samples_per_epoch 2.8 M,
-# precision 16-mixed). Transcribe each block into the keys their current
-# release uses, then `scprint2 fit --config <their file>`.
-# `ovary-fm train --arm a` copies this file with {corpus}, {out},
-# {epochs} and {base_checkpoint} filled in.
+# scPRINT-2 trains through PyTorch Lightning's CLI: `scprint2 fit` takes
+# several --config files that override each other in order, so this file
+# is passed LAST, after the tool's own config/base_v2.yml and
+# config/pretrain_medium.yml (cantinilab/scPRINT-2, November 2026):
+#
+#   scprint2 fit --config <clone>/config/base_v2.yml \
+#                --config <clone>/config/pretrain_medium.yml \
+#                --config {out}/config.yml \
+#                --ckpt_path medium-v2.ckpt
+#
+# The keys below are the ones their docs/pretrain.md shows in the base
+# yaml; anything not listed here keeps the tool's own default. Check the
+# key names against the clone's config/ folder before the first run (the
+# `scprint_training` callback carries lr, schedulers and optimisers and
+# its field names are not documented in pretrain.md).
+#
+# Prerequisites the recipe assumes (docs/first_results_checklist.md 11):
+#   * the dev clone, not only the PyPI package: pretraining functionality
+#     lives in the repo (git clone scPRINT-2, scDataLoader, GRnnData,
+#     benGRN; pip install -e each) -- setup_env.sh --train scprint2 does it;
+#   * a laminDB instance (`lamin init --storage /data/$USER/ovary_fm/lamin
+#     --name ovary_fm --modules bionty`, then `scprint2 easy_setup`), with
+#     the corpus shards registered as one collection (data.collection_name);
+#   * the checkpoint: `hf download jkobject/scPRINT medium-v2.ckpt` (both
+#     scPRINT and scPRINT-2 checkpoints sit on the scPRINT hub page);
+#   * their periodic test() during training reads pre-downloaded test
+#     datasets (their issue #12; files on hf.co/jkobject/scPRINT-2):
+#     point the test paths at those files or disable the test callback.
 # =====================================================================
 plan:
   arm: A
-  base_checkpoint: "{base_checkpoint}"      # from the Hugging Face hub on first use (HF_HOME under /data/$USER)
-  licence_note: "GPL-3 on the code; no separate weights licence file. Ask the authors before redistributing a fine-tuned checkpoint."
+  base_checkpoint: "{base_checkpoint}"      # medium-v2 (16 layers, d 512, ~90 M parameters)
+  licence_note: "GPL-3 code; the checkpoints are public on the hub. Check the model card's licence field before releasing a derived checkpoint."
+  loading_note: "load a checkpoint with precpt_gene_emb=None, gene_pos_file=None: the gene embeddings are stored in the weights; call model._rm_genes() for genes the lamin ontology no longer carries"
 
-data:
-  corpus: "{corpus}"                         # data/corpus/corpus.h5ad: raw counts, mouse symbols + var['gene_ids']
-  loader: scdataloader                       # their loader (lamindb-backed); one exporter from the corpus object
-  organisms: ["NCBITaxon:10090"]             # mouse first; add "NCBITaxon:9606" for the species ablation (KR4)
-  assay_token: suspension_type               # cell vs nucleus enters as a token, never as a gene filter
-  exclude_assays: ["EFO:0010961"]            # Visium-type spots stay out of core pretraining (as they do)
-  max_len: 2200
-  gene_vocab: precomputed_embeddings         # their ESM-style gene embeddings; ovary genes missing from the table get one computed, not dropped
-  held_out_datasets: []                      # the manifest's held_out shards are never in the corpus object anyway
-
-model:
-  size: medium                               # 16 layers, d 512, ~90 M parameters
-  objective: zinb_and_mse                    # count likelihood on raw counts
+# --- the Lightning CLI keys (override the tool's own configs) ------------------
+project: ovary_fm_arm_a
+seed_everything: 0
+ckpt_path: "{base_checkpoint}.ckpt"        # continued pretraining: start FROM the public weights
+set_float32_matmul_precision: true
+wandblog: null                              # no wandb on Biowulf; the CSV logger below
+log_freq: 200
 
 trainer:
   precision: 16-mixed
+  gradient_clip_val: 100
+  log_every_n_steps: 100
   max_epochs: {epochs}
-  batch_size: 64
-  n_samples_per_epoch: 2800000
-  devices: 4                                 # one Biowulf A100 node
-  checkpoint_dir: "{out}/checkpoints"
-  log_dir: "{out}/logs"
-  seed: 0
+  devices: 4                                # one Biowulf A100 node; 1 for the smoke test
+  default_root_dir: "{out}"
+  logger:
+    - class_path: lightning.pytorch.loggers.CSVLogger
+      init_args:
+        save_dir: "{out}/logs"
+
+model:
+  dropout: 0.1
+  transformer: normal                       # flash attention; nhead 8 if a 40 GB card refuses 4 x 128
+  # objective and size come from pretrain_medium.yml (count likelihood on raw counts)
+
+data:
+  organisms:
+    - NCBITaxon:10090                       # mouse first; add NCBITaxon:9606 for the species ablation (KR4)
+  collection_name: ovary_fm_corpus          # the laminDB collection holding data/corpus/qc/*.h5ad (not the held-out shards)
+  how: random expr
+  max_len: 2200
+  weight_scaler: 50
+  gene_position_tolerance: 10000
+  # gene_embeddings: not needed when starting from a checkpoint (stored in the weights)
 
 smoke_test:
-  # before asking for a node: one GPU, a corpus subset, a few hundred steps
+  # before asking for a node: one GPU, the Isola shard only, a few hundred steps
   devices: 1
   limit_train_batches: 300
-  subset_cells: 50000
+  collection_name: ovary_fm_isola_only

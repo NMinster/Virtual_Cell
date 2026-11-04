@@ -87,6 +87,32 @@ build_env() {   # name yml
     fi
 }
 
+# Arm A needs the dev clones: pretraining lives in the scPRINT-2 repo, not
+# in the PyPI package (their README). Editable installs into the env.
+SRC_ROOT="${SRC_ROOT:-/data/${USER}/ovary_fm/src}"
+scprint2_dev_clone() {
+    mkdir -p "${SRC_ROOT}"
+    local repo
+    for repo in cantinilab/scPRINT-2 jkobject/scDataLoader cantinilab/GRnnData jkobject/benGRN; do
+        local name="${repo#*/}"
+        if [[ -d "${SRC_ROOT}/${name}/.git" ]]; then
+            (cd "${SRC_ROOT}/${name}" && git pull --ff-only) || true
+        else
+            git clone --depth 1 "https://github.com/${repo}" "${SRC_ROOT}/${name}"
+        fi
+    done
+    set +u; conda activate ovary_fm_scprint2; set -u
+    python -m pip install -e "${SRC_ROOT}/scPRINT-2[dev]" -e "${SRC_ROOT}/scDataLoader[dev]" \
+        -e "${SRC_ROOT}/GRnnData[dev]" -e "${SRC_ROOT}/benGRN[dev]"
+    set +u; conda deactivate; set -u
+    cat <<MSG
+>> scPRINT-2 dev clones under ${SRC_ROOT}. Once, in the ovary_fm_scprint2 env:
+>>     lamin init --storage /data/${USER}/ovary_fm/lamin --name ovary_fm --modules bionty
+>>     scprint2 easy_setup
+>>     hf download jkobject/scPRINT small-v2.ckpt --local-dir \${HF_HOME}/scprint
+MSG
+}
+
 build_env "${ENV_NAME}" "${REPO_ROOT}/environment.yml"
 set +u; conda activate "${ENV_NAME}"; set -u
 python -m pip install -e "${REPO_ROOT}"
@@ -97,7 +123,8 @@ set +u; conda deactivate; set -u
 for t in "${TRAIN[@]:-}"; do
     [[ -z "${t}" ]] && continue
     case "${t}" in
-        scprint2) build_env ovary_fm_scprint2 "${REPO_ROOT}/environment-train-scprint2.yml" ;;
+        scprint2) build_env ovary_fm_scprint2 "${REPO_ROOT}/environment-train-scprint2.yml"
+                  scprint2_dev_clone ;;
         tahoe)    build_env ovary_fm_tahoe "${REPO_ROOT}/environment-train-tahoe.yml" ;;
         scvi)     build_env ovary_fm_scvi "${REPO_ROOT}/environment-scvi.yml" ;;
         *) echo "!! --train ${t}: scprint2 | tahoe | scvi" >&2; exit 1 ;;

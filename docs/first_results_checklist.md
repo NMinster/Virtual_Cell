@@ -98,7 +98,15 @@ it is wrong):
       (610,620 spots): sizes and whether raw counts are deposited.
 - [ ] Nature Cell Biology 2024 ex vivo ovulation series: the GEO series
       behind scBaseCount SRX23566711-38 and the time-point mapping.
-- [ ] scPRINT-2's weights licence (none stated): write to the authors.
+- [ ] scPRINT-2's checkpoints are public on the hub (`hf download
+      jkobject/scPRINT small-v2.ckpt`), so nothing is needed to use them.
+      The open question is only what licence a *derived* checkpoint can
+      be released under at month 12: open https://huggingface.co/jkobject/scPRINT
+      in a browser and read the model card's licence field (unreachable
+      from the research sandbox). If it names a licence, follow it; if it
+      is empty, a GitHub issue on cantinilab/scPRINT-2 asking which
+      licence covers the weights is the quick public route. Not a blocker
+      for anything before the release.
 - [ ] Biowulf: `freen | grep a100` and `batchlim` for the current A100
       memory mix and walltime limits.
 
@@ -253,9 +261,19 @@ bash biowulf/submit.sh t1
 
 ```bash
 bash biowulf/setup_env.sh --fm scprint2
-bash biowulf/submit.sh fm --tool scprint2         # gpu partition; read the log the first time
+# once, inside the env: the ontologies scPRINT-2 reads and the public checkpoint
+bash biowulf/run.sh python -c "print()" >/dev/null   # (just to source conda); then:
+conda activate ovary_fm_scprint2
+lamin init --storage /data/$USER/ovary_fm/lamin --name ovary_fm --modules bionty
+scprint2 easy_setup
+hf download jkobject/scPRINT small-v2.ckpt --local-dir $HF_HOME/scprint
+conda deactivate
+bash biowulf/submit.sh fm --tool scprint2 --set fm.models.scprint2.checkpoint=$HF_HOME/scprint/small-v2.ckpt
 bash biowulf/submit.sh fm-compare                  # t1 inside every embedding found
 ```
+
+      `lamin init` needs the proxy (login node, or `run.sh python` to source
+      it); the instance lives under `/data/$USER`, not the home quota.
 
       `tables/bench/fm_compare.csv` puts the generalist beside the
       logistic regression per held-out atlas. The September memo predicts
@@ -270,13 +288,23 @@ bash biowulf/run.sh t1 --rep $OVARY_FM_RESULTS/train/arm_c/embedding.parquet
 
 ## 11. Two single-GPU checks before any training budget is asked for (half a day)
 
+- [ ] `bash biowulf/setup_env.sh --train scprint2` adds the dev clones
+      (scPRINT-2, scDataLoader, GRnnData, benGRN under
+      `/data/$USER/ovary_fm/src`): pretraining lives in the repo, not in
+      the PyPI package. Register the QC shards as a laminDB collection
+      named `ovary_fm_corpus` (and the Isola shard alone as
+      `ovary_fm_isola_only`) with scDataLoader's Preprocessor, as their
+      `docs/pretrain.md` describes.
 - [ ] `bash biowulf/run.sh train --arm a` writes
-      `results/train/arm_a/{config.yml,train.sbatch,README.md}`. Open
-      scPRINT-2's `docs/pretrain.md`, transcribe `config.yml` into their
-      format, then in `sinteractive --gres=gpu:a100:1 --mem=90g
-      --cpus-per-task=16` run a few hundred steps on the Isola shard only.
-      Record the step time and the memory; that is the number the
-      200-500 A100-hour estimate is checked against.
+      `results/train/arm_a/{config.yml,train.sbatch,README.md}`. The config
+      is passed as the last `--config` to `scprint2 fit` after their
+      `base_v2.yml` and `pretrain_medium.yml`; check its keys against the
+      clone's `config/` folder, point their periodic `test()` at the test
+      files on hf.co/jkobject/scPRINT-2 or disable it (their issue #12),
+      then in `sinteractive --gres=gpu:a100:1 --mem=90g --cpus-per-task=16`
+      run a few hundred steps on the Isola collection. Record the step time
+      and the memory; that is the number the 200-500 A100-hour estimate is
+      checked against.
 - [ ] `bash biowulf/setup_env.sh --arc`, then in the `ovary_fm_arc` env
       `cell-eval2 run --help`. Align the flags in
       `ovary_fm/bench/runner.py::_score_cell_eval2` with what you see,

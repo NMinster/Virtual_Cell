@@ -48,9 +48,10 @@ Written by `ovary-fm train --arm {arm}` on {stamp}. Nothing has been run.
 
 Before submitting (docs/first_results_checklist.md, step 10):
 
-1. open the tool's own config documentation and transcribe every key of
-   `config.yml` into the tool's format; the keys below are this plan's
-   values, not a file the tool loads as is;
+1. open the tool's own config folder and check every key of `config.yml`
+   against it (arm A: the file is passed as the LAST `--config` to
+   `scprint2 fit`, after their base and pretrain configs, so only the keys
+   that exist there take effect; arm B: transcribe into their format);
 2. run a few hundred steps on ONE GPU with `--set models.{arm}.epochs=1`
    and a corpus subset before asking for a node;
 3. record the checkpoint hash and the wall time in the provenance json.
@@ -72,9 +73,14 @@ def write(cfg, arm: str) -> Path:
     text = text.replace("{base_checkpoint}", str(spec.get("base_checkpoint", "")))
     (out / "config.yml").write_text(text, encoding="utf-8")
     if arm == "a":
-        command = (f"scprint2 fit --config {out}/config.yml   # transcribe config.yml into scPRINT-2's "
-                   f"pretrain_medium.yml format first (docs/pretrain.md in their repo)")
-        docs, setup, gpus, cpus, mem, time = "cantinilab/scPRINT-2 docs/pretrain.md", "scprint2", 4, 16, "360g", "3-00:00:00"
+        src = "${SRC_ROOT:-/data/$USER/ovary_fm/src}/scPRINT-2"
+        command = ("# prerequisites: the dev clone (setup_env.sh --train scprint2), a laminDB instance with the corpus\n"
+                   "# registered as data.collection_name, and the checkpoint (hf download jkobject/scPRINT "
+                   f"{spec.get('base_checkpoint', 'medium-v2')}.ckpt)\n"
+                   f"cd {src}\n"
+                   f"scprint2 fit --config config/base_v2.yml --config config/pretrain_medium.yml "
+                   f"--config {out}/config.yml --ckpt_path $HF_HOME/scprint/{spec.get('base_checkpoint', 'medium-v2')}.ckpt")
+        docs, setup, gpus, cpus, mem, time = "cantinilab/scPRINT-2 docs/pretrain.md and config/", "scprint2", 4, 16, "360g", "3-00:00:00"
     else:
         command = (f"composer scripts/train.py {out}/config.yml   # from a clone of tahoebio/tahoe-x1; "
                    f"transcribe config.yml into their configs/ format first")
