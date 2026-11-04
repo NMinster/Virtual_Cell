@@ -38,6 +38,7 @@
 # `sed -i 's/\r$//' biowulf/*.sh` (the .gitattributes keeps fresh clones LF).
 if [[ -z "${OVFM_CRLF_CLEANED:-}" ]] && grep -q $'\r' "$0" 2>/dev/null; then echo ">> $0 has CRLF line endings; running a cleaned copy (fix: sed -i 's/\r$//' biowulf/*.sh)" >&2; OVFM_CRLF_CLEANED=1 exec bash -c "$(tr -d '\r' < "$0")" "$0" "$@"; fi  # must stay one line ending in a comment
 set -euo pipefail
+: "${USER:=$(id -un)}"   # /data/$USER paths below; a bare shell may not export USER
 
 ENV_NAME="${ENV_NAME:-ovary_fm}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
