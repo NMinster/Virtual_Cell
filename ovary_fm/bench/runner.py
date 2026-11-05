@@ -59,6 +59,21 @@ def excluded_genes(t3: dict, family: str, context: dict) -> set:
 
 # --- splits ----------------------------------------------------------------------------------
 
+def subsample_by_animal(idx: np.ndarray, animals: np.ndarray, max_cells: int, rng: np.random.Generator) -> np.ndarray:
+    """At most max_cells of a group, drawn in proportion to each animal's share (every animal
+    keeps at least one cell); the Challenge's 400 cells per perturbation is the model for this."""
+    if max_cells is None or len(idx) <= max_cells:
+        return idx
+    labels = animals[idx]
+    out = []
+    unique, counts = np.unique(labels, return_counts=True)
+    quota = np.maximum(1, np.floor(counts / counts.sum() * max_cells)).astype(int)
+    for animal, k in zip(unique, quota):
+        members = idx[labels == animal]
+        out.append(rng.choice(members, min(k, len(members)), replace=False))
+    return np.sort(np.concatenate(out))
+
+
 def split_halves(animals: np.ndarray, rng: np.random.Generator, min_animals: int) -> tuple[np.ndarray, str]:
     """A/B per cell: by animal when there are enough animals, else by cell."""
     unique = np.unique(animals)
@@ -100,6 +115,8 @@ def build(cfg):
     # MSE(half A, half B) = Var(A) + Var(B) = 4 x the variance of the full-depth pseudobulk, so a
     # noiseless prediction of the full group sits at a quarter of the half-vs-half error
     depth_corr = float((t3.get("replicate") or {}).get("expr_mse_depth_correction", 4.0))
+    max_cells = t3.get("max_cells_per_group")
+    max_cells = int(max_cells) if max_cells else None
 
     bundles, cells_by_context, skipped = [], {}, []
     for context in t3["contexts"]:
@@ -122,6 +139,9 @@ def build(cfg):
                                 & (obs[key].astype(str) == compartment).to_numpy())[0]
             if len(ctrl_idx) == 0:
                 continue
+            n_ctrl_all = int(len(ctrl_idx))
+            ctrl_idx = subsample_by_animal(ctrl_idx, obs["animal"].astype(str).to_numpy(), max_cells,
+                                           np.random.default_rng(base_seed + 500))
             ctrl = adata[ctrl_idx].copy()
             ctrl.obs["role"] = "control"
             ctrl.obs["compartment"] = compartment
@@ -134,18 +154,22 @@ def build(cfg):
                 pert_idx = np.where((obs["condition"].astype(str) == str(p)).to_numpy()
                                     & (obs[key].astype(str) == compartment).to_numpy())[0]
                 bid = f"{name}|{p}|{compartment}"
+                n_pert_all = int(len(pert_idx))
+                pert_idx = subsample_by_animal(pert_idx, obs["animal"].astype(str).to_numpy(), max_cells,
+                                               np.random.default_rng(base_seed + 501 + len(bundles)))
                 record = {"bundle_id": bid, "context": name, "dataset": dset, "family": context["family"],
                           "condition": p, "control": context["control"], "compartment": compartment,
                           "n_control": int(len(ctrl_idx)), "n_pert": int(len(pert_idx)),
+                          "n_control_all": n_ctrl_all, "n_pert_all": n_pert_all, "max_cells_per_group": max_cells,
                           "n_animals_control": int(ctrl.obs["animal"].nunique()),
                           "n_animals_pert": int(obs["animal"].iloc[pert_idx].nunique()) if len(pert_idx) else 0,
                           "held_out": bool(context.get("held_out", False)),
                           "n_excluded_genes": int((~keep_mask).sum())}
                 time_h = obs["condition_time_h"].iloc[pert_idx] if len(pert_idx) else pd.Series(dtype=float)
                 record["time_h"] = float(time_h.iloc[0]) if len(time_h) and pd.notna(time_h.iloc[0]) else np.nan
-                if len(pert_idx) < min_hard or len(ctrl_idx) < min_hard:
+                if n_pert_all < min_hard or n_ctrl_all < min_hard:
                     record["scorable"] = False
-                    record["reason"] = f"fewer than {min_hard} cells (control {len(ctrl_idx)}, perturbed {len(pert_idx)})"
+                    record["reason"] = f"fewer than {min_hard} cells (control {n_ctrl_all}, perturbed {n_pert_all})"
                     bundles.append(record)
                     continue
                 pert = adata[pert_idx].copy()
@@ -280,7 +304,8 @@ def build(cfg):
                                                               encoding="utf-8")
     ceilings = pd.DataFrame(public)
     front = ["bundle_id", "context", "dataset", "family", "condition", "control", "compartment", "scorable", "reason",
-             "scored", "score_reason", "n_control", "n_pert", "n_animals_control", "n_animals_pert", "replicate_level",
+             "scored", "score_reason", "n_control", "n_pert", "n_control_all", "n_pert_all", "max_cells_per_group",
+             "n_animals_control", "n_animals_pert", "replicate_level",
              "n_de_real", "n_de_real_kept", "gate_nmae", "n_b1_sources", "b1_sources", "held_out", "time_h",
              "n_excluded_genes"]
     cols = [c for c in front if c in ceilings] + [c for c in ceilings.columns if c not in front]

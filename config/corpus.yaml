@@ -106,15 +106,16 @@ datasets:
     animal_key: gsm_sample         # mouse_young_regular_ovary1 ... one ovary per library
     condition:
       key: gsm_sample
-      patterns:                    # ordered: irregular before peri, the sorted senescent cells first
+      patterns:                    # the deposit's codes (read 2026-11-04): Y_r young regular, M_r middle-aged regular,
+                                   # M_ir middle-aged irregular, O_a old acyclic, plus the SPiDER-sorted cells
         - {pattern: "spider|bgal|b-gal|senesc", value: senescent_sorted}
-        - {pattern: "irregular", value: peri_irregular}
-        - {pattern: "peri", value: peri_regular}
-        - {pattern: "young", value: young}
-        - {pattern: "post", value: post_estropausal}
+        - {pattern: "_M_ir_", value: peri_irregular}
+        - {pattern: "_M_r_", value: peri_regular}
+        - {pattern: "_Y_r_", value: young}
+        - {pattern: "_O_a_", value: post_estropausal}
       family: ageing
       control: young
-    status: fill_in                # confirm the patterns against `ovary-fm inspect` once unpacked
+    status: ready
     notes: "Wang, Yang, Jin et al. 2026, PNAS 123(30):e2600323123 (PMID 42479833; Suh lab). 18 samples: young regular, peri-estropausal regular vs irregular, post-estropausal, plus SPiDER-βGal-high sorted cells from post-estropausal ovaries (a sorted subpopulation: kept as its own condition, not a context)."
 
   - name: schuh2024_ovulation
@@ -132,6 +133,8 @@ datasets:
     path: data/raw/schuh2024_ovulation
     label_key: null                # no annotations in the deposit: transferred in harmonise (isolated follicles: mostly granulosa, cumulus, oocytes)
     animal_key: gsm_sample         # 'In vivo setup, 0hr post-hCG administration, replicate 2' ... one replicate per library
+    cell_calling: {mode: knee, expected_cells: 8000}   # the deposit holds every droplet: 49 M barcodes over 28 libraries (2026-11-04)
+    qc: {min_counts: 500, min_genes: 300}              # 10x cells, not nuclei: the plan's 200 / 100 are for the own nuclei
     condition:
       key: gsm_sample
       patterns:                    # two factors in one value: the setup and the time point; confirm against `inspect`

@@ -82,6 +82,8 @@ global:
   granulosa cell: {major: Granulosa}
   granulosa: {major: Granulosa}
   cumulus cell: {major: Granulosa, fine: cumulus cell}
+  cumulus: {major: Granulosa, fine: cumulus cell}
+  cumulus granulosa cell: {major: Granulosa, fine: cumulus cell}
   mural granulosa cell: {major: Granulosa, fine: mural granulosa cell}
   luteal cell: {major: Luteal}
   luteal: {major: Luteal}
@@ -190,6 +192,8 @@ datasets:
   huang2025:
     myeloid: {major: Immune}
     epithelial: {major: Epithelial}
+    cumulus 1: {major: Granulosa, fine: cumulus cell}
+    cumulus 2: {major: Granulosa, fine: cumulus cell}
 
   # The own data: the final eight types of Mouse_Compensatory
   mouse_comp_30d:

@@ -89,6 +89,12 @@ datasets; the transfer is the T1 logistic regression at confidence
 
 **Compartments**: the eight major types. A bundle is built only when
 both groups have ≥ 50 cells (`min_cells_hard`); the target is Arc's 400.
+Each group is capped at 1,000 cells (`max_cells_per_group`), drawn in
+proportion to each animal's share with a fixed seed, so the DE test has
+the same power in every bundle: on the first real run, groups of
+130,000 cells made every gene significant and put the replicate's
+fold-change error above 1. Arc fixes 400 cells per perturbation for the
+same reason. The uncapped sizes stay in the ceilings table.
 A built bundle is **scored** only when ≥ 5 real DE genes remain after
 the exclusions (`min_de_genes_to_score`): a compartment that does not
 respond cannot tell models apart, and the empty-set conventions (Jaccard
@@ -224,6 +230,7 @@ scANVI rows, the data-size and species curves, and every deviation.
 | Date | Section | Change | Reason | Scores seen before the change? |
 | --- | --- | --- | --- | --- |
 | 2026-11-04 | all | file created as a draft | — | no |
+| 2026-11-05 | §4 | groups capped at 1,000 cells per bundle, drawn per animal; raw-droplet deposits get knee cell calling in qc; `cumulus` added to the crosswalk | the first real bench run (4 datasets, 45 bundles): the Schuh deposit held every droplet (49 M barcodes, median 309 UMIs), 130,000-cell groups made 5,000-9,000 genes significant with replicate NMAE > 1, and Huang's two cumulus clusters (3,718 cells) were unmapped | yes, synthetic and the first real ceilings; no model scores |
 | 2026-11-04 | §4 | morris_cycle: the deposit is OSF project 924fz (inDrop; cycling, four estrous stages, two post-partum states), not GEO; the hcg_8h arm the memo listed is not in the deposit's description and leaves the context; the two post-partum states enter | the OSF record was read | no |
 | 2026-11-04 | §4 | contexts added from the GEO records read that day: wang_suh_ageing (GSE267729), gaylord_ageing (GSE290742), schuh_ovulation_invivo and _invitro (GSE255274); morris_cycle's accession marked as unconfirmed (GSE192722 is a different study) | the records became readable; both families now have a second dataset, so b1 exists | no |
 | 2026-11-04 | §4, §6 | the scale is anchored on b0; b1 is scored as a model and is the bar; the expression replicate is corrected to full depth (÷ 4) | anchoring on b1 made the denominator collapse where the transfer sits near the ceiling (b0 at −34 on one member of the synthetic run); the half-depth expression replicate was noisier than the control copy on small effects | synthetic scores only |

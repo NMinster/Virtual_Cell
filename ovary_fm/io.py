@@ -153,6 +153,10 @@ def geo_raw_groups(folder: Path) -> dict:
             complete[prefix] = {k: v for k, v in g.items() if k != "csv"}
         elif "csv" in g and len(groups) > 1:
             complete[prefix] = g                     # per-sample text matrices (a lone csv is the single-matrix path)
+    # a deposit that carries both the raw (every droplet) and the filtered (called cells) matrix
+    # of a sample: take the filtered one
+    if any("filtered" in p.lower() for p in complete) and any("raw" in p.lower() for p in complete):
+        complete = {p: g for p, g in complete.items() if "raw" not in p.lower()}
     return complete
 
 

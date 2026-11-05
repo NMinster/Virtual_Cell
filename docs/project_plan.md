@@ -362,6 +362,9 @@ independent single-node jobs that can start whenever a node frees.
 - Data loading: scDataLoader (lamindb-backed, what scPRINT-2 trains
   from) for arm A; the Tahoe-x1 Composer pipeline for arm B; one
   exporter from the corpus object to each.
+- The benchmark's cost is the per-gene Wilcoxon tests: the first real
+  bench run took two hours on one 128 GB node with uncapped groups of up
+  to 130,000 cells; the 1,000-cell cap brings it to minutes.
 - SLURM: `biowulf/submit.sh` extended with a `train` stage on the gpu
   partition; checkpoints and `HF_HOME` under `/data/$USER`, not the home
   quota; proxy exported for weight downloads.

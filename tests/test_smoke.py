@@ -28,6 +28,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 from ovary_fm.bench.metrics import bh, de_members, pds_cosine, rescale  # noqa: E402
+from ovary_fm.bench.runner import subsample_by_animal  # noqa: E402
+from ovary_fm.qc import knee_cutoff  # noqa: E402
 from ovary_fm.config import apply_override, load_config  # noqa: E402
 from ovary_fm.harmonise import crosswalk_lookup  # noqa: E402
 
@@ -49,6 +51,10 @@ def test_config_carries_the_plan():
     assert cfg["benchmark"]["t3"]["min_de_genes_to_score"] == 5             # the signal gate
     assert cfg["benchmark"]["t3"]["pds"]["min_pool"] == 5
     assert cfg["benchmark"]["t3"]["replicate"]["expr_mse_depth_correction"] == 4
+    assert cfg["benchmark"]["t3"]["max_cells_per_group"] == 1000
+    assert cfg["qc"]["cell_calling"]["mode"] == "auto"
+    hit = crosswalk_lookup(cfg["crosswalk"], "huang2025", "Cumulus 1")
+    assert hit["major"] == "Granulosa" and hit["fine"] == "cumulus cell"
     assert "Egr1" in cfg["benchmark"]["t3"]["exclude_genes"]["ovulation"]
     assert cfg["benchmark"]["margins"]["t3_context_score"] == 0.05
     assert cfg["crosswalk"]["major_types"] == ["Oocytes", "Granulosa", "Luteal", "Theca", "Stromal", "Endothelial",
@@ -85,6 +91,22 @@ def test_crosswalk_lookup_levels():
         hit = crosswalk_lookup(cw, "huang2025", label)
         assert hit["major"] == major, (label, hit)
         assert hit["status"] in ("mapped_dataset", "mapped_global", "mapped_stem")
+
+
+def test_knee_cutoff_and_group_cap():
+    rng = np.random.default_rng(0)
+    cells = rng.negative_binomial(5, 5 / 5000, size=5000) + 500        # ~5,000 real cells around 5,000 UMIs
+    empties = rng.poisson(40, size=400000)                               # 400,000 empty droplets
+    counts = np.concatenate([cells, empties])
+    cut = knee_cutoff(counts, expected_cells=8000, min_counts=200)
+    kept = counts >= cut
+    assert 200 <= cut < 1500 and 4500 <= kept.sum() <= 5500             # the knee keeps the cells, drops the soup
+    idx = np.arange(3000)
+    animals = np.array(["a"] * 2400 + ["b"] * 500 + ["c"] * 100)
+    sub = subsample_by_animal(idx, animals, 1000, np.random.default_rng(0))
+    counts_by = pd.Series(animals[sub]).value_counts()
+    assert len(sub) <= 1000 and counts_by["a"] > counts_by["b"] > counts_by["c"] >= 1   # proportional, nobody lost
+    assert len(subsample_by_animal(idx[:300], animals[:300], 1000, np.random.default_rng(0))) == 300
 
 
 # --- the members -----------------------------------------------------------------------

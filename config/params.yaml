@@ -36,6 +36,17 @@ qc:
     enabled: false                 # scanpy's scrublet when true (needs scikit-image); off in the scaffold
     rate_per_1000: 0.008
   min_cells_per_animal: 50         # an animal with fewer cells after QC is dropped and named
+  # A deposit can hold every droplet, not the called cells (GEO "RAW" tars often do: the Schuh
+  # series arrived as 49 M barcodes). Per sample, `auto` applies the knee rule when there are
+  # more barcodes than a 10x lane yields cells or the median barcode is nearly empty; the rule
+  # is Cell Ranger's older one: the 99th percentile of the top expected_cells barcodes' UMIs,
+  # divided by ten. A dataset entry can set cell_calling: {mode: knee|off, expected_cells: N}
+  # and override any qc threshold under its own `qc:` block.
+  cell_calling:
+    mode: auto
+    max_barcodes_per_sample: 60000
+    min_median_counts: 500
+    expected_cells: 8000
   mito_prefix: {mouse: "mt-", human: "MT-"}
   nuclear_genes: {mouse: [Malat1, Neat1, Meg3], human: [MALAT1, NEAT1, MEG3]}
   ribo_prefix: {mouse: ["Rpl", "Rps"], human: ["RPL", "RPS"]}

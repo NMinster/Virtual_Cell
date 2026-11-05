@@ -32,6 +32,10 @@ t3:
   compartments: [Granulosa, Luteal, Theca, Stromal, Endothelial, Epithelial, Immune, Oocytes]
   min_cells: 400                   # Arc's 400 per perturbation; the gate below is what the scaffold enforces
   min_cells_hard: 50               # below this a (context, condition, compartment) is listed, not built
+  # Groups are capped so the DE test has the same power everywhere (with 130,000 cells every gene is
+  # "significant" and the replicate fold-change error exceeds 1; the Challenge fixes 400 cells per
+  # perturbation). The cap draws cells in proportion to each animal's share, seeded.
+  max_cells_per_group: 1000
   # the signal gate: a bundle is scored (and enters the PDS pool) only with at least this many real
   # DE genes after exclusions; below it the compartment did not respond enough to tell models apart,
   # the empty-set conventions make the control copy look perfect, and its ceilings are listed only

@@ -154,12 +154,15 @@ the two human atlases (`enabled: false`). What the download will tell you:
   points, `orig.ident` the six libraries, and there is no per-mouse
   column, so the library is the replicate unit. 25,714 cells, the
   authors' DoubletFinder singlets.
-- [ ] Wang/Suh, Schuh and Gaylord: the `condition.patterns` (and Gaylord's
+- Wang/Suh is filled (2026-11-05, from the first qc run): the deposit
+  codes its groups `Y_r` (young regular), `M_r` and `M_ir` (middle-aged
+  regular and irregular), `O_a` (old acyclic), plus the SPiDER-sorted
+  cells; the patterns match those codes now.
+- [ ] Schuh and Gaylord: the `condition.patterns` (and Gaylord's
       `animal_regex`, which folds the 10x and plate libraries of one mouse
-      into one animal) are written against the sample titles GEO shows;
-      the real file names may differ. `inspect` prints the `gsm_sample`
-      values once the tars are unpacked, and `qc` prints any value no
-      pattern matches. Adjust the regexes, rerun.
+      into one animal) matched on the first run; `inspect` prints the
+      `gsm_sample` values and `qc` prints any value no pattern matches if
+      a file name changes.
 
 ## 4. Fetch (one batch job per dataset; minutes to an hour each; ~11 GB)
 
@@ -235,10 +238,15 @@ bash biowulf/submit.sh qc --dataset isola2024
       matches` tells you which regexes to fix; fix them in the manifest and
       rerun until the summary row is right.
 - [ ] `tables/qc/qc_summary.csv`: modality agrees with the manifest (the
-      tells are printed either way); `n_animals` is the design's (Isola 8;
-      Huang 6 libraries unless a mouse column exists; Wang/Suh 18; Schuh
-      28; Gaylord 6 animals from 12 libraries); `conditions` are the
-      mapped names (`age_3mo;age_9mo`, `young;aged`,
+      tells are printed either way); `cells_in` is a plausible number of
+      cells, not of droplets (the Schuh deposit arrived as 49 M barcodes
+      with a median of 309 UMIs: the `cell_calling` column must read
+      `knee` there, and `cells_out` land in the hundreds of thousands,
+      not 1.3 M); `mito_genes_matched` is > 0 (zero means the gene names
+      are not symbols and the mito cap did nothing); `n_animals` is the
+      design's (Isola 8; Huang 6 libraries unless a mouse column exists;
+      Wang/Suh 18; Schuh 28; Gaylord 6 animals from 12 libraries);
+      `conditions` are the mapped names (`age_3mo;age_9mo`, `young;aged`,
       `hcg_0h;hcg_4h;hcg_12h`, `young;peri_regular;peri_irregular;
       post_estropausal;senescent_sorted`, `invivo_hcg_0h;...`).
 - [ ] `tables/qc/<name>_dropoff.csv`: no step removes more than you can
@@ -281,10 +289,19 @@ bash biowulf/submit.sh bench
 ```
 
 - [ ] `tables/bench/ceilings.csv`: one row per (context, condition,
-      compartment). For Isola (4 + 4 animals) and Huang (3 per time
-      point) `replicate_level` must read `animals`; `n_de_real` per
+      compartment). For Isola (4 + 4 animals), Gaylord (3 + 3) and Huang
+      (2 libraries per time point) `replicate_level` must read `animals`;
+      `n_control` and `n_pert` are the capped groups (1,000 at most, drawn
+      per animal; the uncapped sizes are beside them); `n_de_real` per
       compartment is the first measurement of how much each compartment
-      responds; `gate_nmae` says where the fold-change member is scorable.
+      responds, and with the cap it should be in the hundreds for a real
+      response, not 8,000 for every compartment; `r_de_lfc_nmae` below 1
+      says the replicate animals agree on the fold changes at all.
+      The first real run (2026-11-04, four datasets, 45 bundles, before
+      the cap and before Schuh's cell calling) had every bundle at
+      5,000-9,000 DE genes and replicate NMAE around or above 1: that is
+      what the cap and the calling fix, and why those numbers were not
+      kept.
 - [ ] `tables/bench/de/*.csv`: the real DE tables; open the granulosa
       hcG 4 h one and check that the excluded immediate-early genes carry
       large fold changes (they are the leak the rule removes) and that

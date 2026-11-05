@@ -18,3 +18,4 @@
 *.parquet binary
 *.csv text eol=lf
 *.toml text eol=lf
+*.pptx binary
