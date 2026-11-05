@@ -42,7 +42,7 @@ def build_parser():
     parser.add_argument("--data", default=None, help="data root (downloads and the corpus)")
     parser.add_argument("--results", default=None, help="output root")
     parser.add_argument("--dataset", default=None, help="fetch / qc: one dataset of the manifest")
-    parser.add_argument("--model", default="stub", help="predict: b0 | b1 | stub")
+    parser.add_argument("--model", default=None, help="predict: b0 | b1 | stub (default: all three)")
     parser.add_argument("--pred", default=None, help="score: the prediction .h5ad")
     parser.add_argument("--name", default=None, help="score / t1: a name for the output tables")
     parser.add_argument("--scorer", default="lite", choices=["lite", "cell-eval2"])
@@ -79,20 +79,21 @@ def main(argv=None):
     from .models import recipes, stub
 
     def _predict():
-        if args.stage == "all":
-            for model in ("b0", "b1", "stub"):
+        for model in ([args.model] if args.model else ["b0", "b1", "stub"]):
+            try:
                 stub.predict(cfg, model)
-        else:
-            stub.predict(cfg, args.model)
+            except ValueError as exc:          # b1 has no transfer source yet: say so, carry on
+                print(f"  {model}: {exc}")
 
     def _score():
-        if args.stage == "all":
-            for model in ("b0", "b1", "stub"):
-                runner.score(cfg, stub.prediction_path(cfg, model), model, scorer="lite")
-        else:
-            if not args.pred:
-                raise SystemExit("score needs --pred PATH (a prediction .h5ad from `predict`)")
+        if args.pred:
             runner.score(cfg, resolve_path(args.pred, prefer="cwd"), args.name or "prediction", scorer=args.scorer)
+            return
+        found = [m for m in ("b0", "b1", "stub") if stub.prediction_path(cfg, m).exists()]
+        if not found:
+            raise SystemExit("score needs --pred PATH, or the baseline predictions from `predict`")
+        for model in found:
+            runner.score(cfg, stub.prediction_path(cfg, model), model, scorer=args.scorer)
 
     def _train():
         if args.arm is None:

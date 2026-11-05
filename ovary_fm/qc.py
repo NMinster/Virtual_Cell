@@ -282,6 +282,9 @@ def run(cfg, dataset: str | None = None):
     summary = []
     for entry in datasets(cfg, names=[dataset] if dataset else None):
         print(f"== {entry['name']}")
+        if not dataset_path(cfg, entry).exists():
+            print(f"  !! {dataset_path(cfg, entry)} is not on disk; skipped (run `ovary-fm fetch --dataset {entry['name']}`)")
+            continue
         adata, dropoff, tells = qc_one(cfg, entry)
         dropoff.to_csv(tables / f"{entry['name']}_dropoff.csv", index=False)
         out = qc_shard_path(cfg, entry["name"])
