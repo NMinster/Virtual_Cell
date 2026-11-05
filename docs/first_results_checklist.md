@@ -37,8 +37,10 @@ export OVARY_FM_DATA=/data/$USER/ovary_fm/data
 export OVARY_FM_RESULTS=/data/$USER/ovary_fm/results
 ```
 
-Put the two exports in your login shell's profile; `submit.sh` bakes them
-into every job script.
+Put the two exports in `~/.bashrc`; `submit.sh` bakes them into every
+job script, but a new login shell without them makes `$OVARY_FM_DATA`
+expand to nothing (a path like `/raw/huang2025/...`), and `run.sh` then
+falls back to the repo's own `data/` and `results/` and says so.
 
 Clone on Biowulf itself, not on a Windows machine and then copy. A
 checkout made with `core.autocrlf=true` arrives with `\r` line endings
@@ -195,14 +197,20 @@ bash biowulf/run.sh pip install -e '.[census]'
 - [ ] `data/raw/<name>/download.json` exists for each, with sizes and
       sha256; `GSE267729_RAW/` and `GSE255274_RAW/` are unpacked beside
       their tars.
-- [ ] Huang 2025 is a Seurat object; convert it once (the R module's
-      Seurat; if `library(Seurat)` fails, install it into `R_LIBS_USER`):
+- [ ] Huang 2025 is a Seurat object; convert it once, as a batch job
+      (`module load R` is refused on the login node, and reading a 5.5 GB
+      object wants tens of GB of memory; the job gets 128 GB):
 
 ```bash
-module load R
-Rscript R/rds_to_mtx.R $OVARY_FM_DATA/raw/huang2025/GSE294534_10x_update.rds $OVARY_FM_DATA/raw/huang2025/
-head -3 $OVARY_FM_DATA/raw/huang2025/meta.csv      # the columns for label_key / animal_key
+bash biowulf/submit.sh convert huang2025
+tail -40 logs/convert_<jobid>.out          # ends with every metadata column, its distinct values and the first few
 ```
+
+      The end of that log is what fills the manifest: the column with the
+      16 cluster names is `label_key`, the one with the six libraries
+      (`0hr post-hCG (ABC)` ...) is the condition `key`, and if a column
+      names the mouse it is `animal_key`. If `library(Seurat)` fails in the
+      module R, install it into `R_LIBS_USER` from an `sinteractive`.
 
 - [ ] `bash biowulf/run.sh inspect` → `on_disk: True` for all five, the
       per-sample counts (18, 28 and 12) and the `gsm_sample` values for

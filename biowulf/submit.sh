@@ -9,6 +9,7 @@
 #     bash biowulf/submit.sh fm --tool scprint2      # gpu partition
 #     bash biowulf/submit.sh train --arm c           # gpu partition (scVI)
 #     bash biowulf/submit.sh python scripts/scbasecount_metadata.py --species mouse
+#     bash biowulf/submit.sh convert huang2025       # the Seurat .rds -> mtx + meta.csv, with R loaded in the job
 #     bash biowulf/submit.sh --dry-run first         # print the sbatch lines only
 #
 # Everything after the stage is passed to run.sh. The roots come from the
@@ -47,6 +48,8 @@ if [[ -z "${STAGE}" ]]; then
     echo "        chain <stage> [<stage>...]   one job each, chained with afterok" >&2
     echo "        first                        qc harmonise bench, then predict score t1 report" >&2
     echo "        python <script> [args]       any script on a compute node, with the proxy" >&2
+    echo "        convert <dataset> [file.rds] the .rds under data/raw/<dataset>/ -> mtx + meta.csv (loads R)" >&2
+    echo "        rscript <script> [args]      any R script in the module R" >&2
     exit 1
 fi
 shift
@@ -59,7 +62,7 @@ resources() {
     local heavy=0 gpu=0 light=0 other=0 stage
     for stage in $1; do
         case "${stage}" in
-            harmonise|bench|score) heavy=1 ;;
+            harmonise|bench|score|convert|rscript) heavy=1 ;;   # a 5.5 GB Seurat object needs tens of GB to read
             fm)    if [[ " $2 " == *" stub "* ]]; then light=1; else gpu=1; fi ;;
             train) if [[ " $2 " == *" c "* ]]; then gpu=1; else light=1; fi ;;
             inspect|fetch|report|python|predict) light=1 ;;

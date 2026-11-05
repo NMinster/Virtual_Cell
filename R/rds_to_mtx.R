@@ -3,23 +3,36 @@
 # object) into a 10x-style mtx folder that `ovary-fm qc` reads:
 #
 #     Rscript R/rds_to_mtx.R object.rds data/raw/<dataset>/ [assay] [layer]
+#     bash biowulf/submit.sh convert <dataset>      # on Biowulf: R loads only inside a job
 #
 # Writes matrix.mtx.gz (genes x cells, raw counts), features.tsv.gz,
 # barcodes.tsv.gz and meta.csv (the object's cell metadata, one row per
-# barcode) into the folder. No SeuratDisk, no h5ad writer: Matrix and
-# whichever of Seurat / SingleCellExperiment the object needs.
+# barcode) into the folder, then prints every metadata column with its
+# number of distinct values and the first few, so the log alone says which
+# column is the label, which the animal and which the condition.
+# No SeuratDisk, no h5ad writer: Matrix and whichever of Seurat /
+# SingleCellExperiment the object needs.
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args) < 2) stop("usage: Rscript R/rds_to_mtx.R object.rds outdir [assay] [layer]")
 rds <- args[1]; outdir <- args[2]
 assay <- if (length(args) >= 3) args[3] else NULL
 layer <- if (length(args) >= 4) args[4] else "counts"
 suppressPackageStartupMessages(library(Matrix))
+cat(sprintf("reading %s (%.1f GB)\n", rds, file.size(rds) / 1e9))
 obj <- readRDS(rds)
 dir.create(outdir, showWarnings = FALSE, recursive = TRUE)
 
 if (inherits(obj, "Seurat")) {
   suppressPackageStartupMessages(library(Seurat))
+  cat(sprintf("Seurat object: %d cells, assays: %s, default %s\n", ncol(obj),
+              paste(names(obj@assays), collapse = ", "), DefaultAssay(obj)))
+  # an object saved by an older Seurat loads in v5 after an update; v5 objects may carry
+  # split layers (counts.1, counts.2, ...) that have to be joined before they can be read
+  obj <- tryCatch(UpdateSeuratObject(obj), error = function(e) { message("UpdateSeuratObject: ", conditionMessage(e)); obj })
   if (is.null(assay)) assay <- DefaultAssay(obj)
+  if (exists("JoinLayers")) {
+    obj <- tryCatch(JoinLayers(obj, assay = assay), error = function(e) obj)
+  }
   counts <- tryCatch(GetAssayData(obj, assay = assay, layer = layer),
                      error = function(e) GetAssayData(obj, assay = assay, slot = layer))
   meta <- obj@meta.data
@@ -29,8 +42,11 @@ if (inherits(obj, "Seurat")) {
   meta <- as.data.frame(SummarizedExperiment::colData(obj))
 } else if (inherits(obj, "dgCMatrix") || is.matrix(obj)) {
   counts <- as(obj, "dgCMatrix"); meta <- data.frame(row.names = colnames(counts))
+} else if (is.list(obj) && !is.null(obj$counts)) {
+  counts <- as(obj$counts, "dgCMatrix")
+  meta <- if (!is.null(obj$meta)) as.data.frame(obj$meta) else data.frame(row.names = colnames(counts))
 } else {
-  stop("not a Seurat, SingleCellExperiment or matrix object: ", class(obj)[1])
+  stop("not a Seurat, SingleCellExperiment, matrix or list(counts=, meta=) object: ", class(obj)[1])
 }
 counts <- as(counts, "dgCMatrix")
 if (any(counts@x != round(counts@x))) warning("the matrix is not integer valued: is this the counts layer?")
@@ -42,3 +58,11 @@ con <- gzfile(file.path(outdir, "features.tsv.gz"), "w"); write.table(feat, con,
 con <- gzfile(file.path(outdir, "barcodes.tsv.gz"), "w"); writeLines(colnames(counts), con); close(con)
 write.csv(meta, file.path(outdir, "meta.csv"))
 cat(sprintf("wrote %d genes x %d cells to %s (meta.csv: %d columns)\n", nrow(counts), ncol(counts), outdir, ncol(meta)))
+
+cat("\nmetadata columns (distinct values; the first few), for label_key / animal_key / condition.key:\n")
+for (col in colnames(meta)) {
+  v <- meta[[col]]
+  u <- unique(as.character(v))
+  shown <- paste(head(u, 8), collapse = " | ")
+  cat(sprintf("  %-28s %6d distinct   %s%s\n", col, length(u), shown, if (length(u) > 8) " | ..." else ""))
+}
