@@ -79,6 +79,12 @@ def test_crosswalk_lookup_levels():
     assert hit["major"] == "Granulosa" and hit["status"] == "mapped_global"
     hit = crosswalk_lookup(cw, "nobody", "mystery cells")
     assert hit["major"] == "Unassigned" and hit["status"] == "unmapped"
+    # the stem rule: Huang 2025's numbered clusters and time-split names
+    for label, major in (("Granulosa 3", "Granulosa"), ("Stroma 1", "Stromal"), ("Theca_00", "Theca"),
+                         ("Luteal Cells", "Luteal"), ("Endothelial 2", "Endothelial"), ("Myeloid", "Immune")):
+        hit = crosswalk_lookup(cw, "huang2025", label)
+        assert hit["major"] == major, (label, hit)
+        assert hit["status"] in ("mapped_dataset", "mapped_global", "mapped_stem")
 
 
 # --- the members -----------------------------------------------------------------------

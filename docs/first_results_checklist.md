@@ -149,11 +149,11 @@ the two human atlases (`enabled: false`). What the download will tell you:
 
 - [ ] `bash biowulf/run.sh inspect` → the five mouse datasets are enabled;
       the `fill_in` statuses are what step 5 settles.
-- [ ] Huang 2025: `label_key` and `animal_key` come from the Seurat
-      object's metadata columns, printed by `qc` as `obs columns` after
-      the conversion in step 4. The paper's 16 named clusters are the
-      labels; if there is a per-mouse (hashtag) column use it as
-      `animal_key`, otherwise the library (`orig.ident`) is the replicate.
+- Huang 2025 is filled (2026-11-04, from the conversion log): `ff_names`
+  holds the paper's 16 named clusters, `timepoints` the three time
+  points, `orig.ident` the six libraries, and there is no per-mouse
+  column, so the library is the replicate unit. 25,714 cells, the
+  authors' DoubletFinder singlets.
 - [ ] Wang/Suh, Schuh and Gaylord: the `condition.patterns` (and Gaylord's
       `animal_regex`, which folds the 10x and plate libraries of one mouse
       into one animal) are written against the sample titles GEO shows;

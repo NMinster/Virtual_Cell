@@ -17,6 +17,12 @@
 #   * matching is case-insensitive after stripping; `global` applies when
 #     a dataset block has no entry for the label.
 #
+# A label that is not listed is also tried with a trailing number, suffix
+# or the word "cells" removed ("Granulosa 3" -> granulosa, "Theca_00" ->
+# theca, "Luteal Cells" -> luteal) against the dataset block and then the
+# global map; such a hit carries crosswalk_status `mapped_stem` so the
+# review table shows it was not an exact entry.
+#
 # `cl_id: verify` marks a term whose identifier was not confirmed against
 # the ontology from this machine: check it at https://www.ebi.ac.uk/ols4
 # (search the label) before the crosswalk is released. The seed of this
@@ -89,16 +95,22 @@ global:
   stromal cell of ovary: {major: Stromal}
   ovarian stromal cell: {major: Stromal}
   stromal cell: {major: Stromal}
+  stroma: {major: Stromal}
+  stromal: {major: Stromal}
+  mesenchyme: {major: Stromal}
   fibroblast: {major: Stromal, fine: fibroblast}
   smooth muscle cell: {major: Stromal, fine: smooth muscle cell}
   pericyte: {major: Stromal, fine: pericyte}
   endothelial cell: {major: Endothelial}
   endothelium: {major: Endothelial}
+  endothelial: {major: Endothelial}
   lymphatic endothelial cell: {major: Endothelial, fine: endothelial cell of lymphatic vessel}
   endothelial cell of lymphatic vessel: {major: Endothelial, fine: endothelial cell of lymphatic vessel}
   epithelial cell: {major: Epithelial}
   ovarian surface epithelial cell: {major: Epithelial, fine: ovarian surface epithelial cell}
   epithelium: {major: Epithelial}
+  epithelial: {major: Epithelial}
+  mesothelial: {major: Epithelial}
   macrophage: {major: Immune, fine: macrophage}
   monocyte: {major: Immune, fine: monocyte}
   dendritic cell: {major: Immune, fine: dendritic cell}
@@ -109,6 +121,9 @@ global:
   natural killer cell: {major: Immune, fine: natural killer cell}
   leukocyte: {major: Immune}
   immune: {major: Immune}
+  myeloid: {major: Immune}
+  lymphoid: {major: Immune}
+  lymphocyte: {major: Immune}
   oocyte: {major: Oocytes}
   oocytes: {major: Oocytes}
   erythrocyte: {major: Unassigned, fine: erythrocyte}
@@ -169,8 +184,12 @@ datasets:
     en_blood: {major: Endothelial}
     en_lymph: {major: Endothelial, fine: endothelial cell of lymphatic vessel}
 
-  # Huang 2025: fill in after the download (16 clusters)
-  huang2025: {}
+  # Huang 2025, obs ff_names (16 named clusters; read from the converted object on 2026-11-04).
+  # The numbered ones (Granulosa 1-3, Stroma 1-2, Theca 1-2, Luteal 1-2, Endothelial 1-2) resolve
+  # through the stem rule; the review table lists every name with its mapping for the lab.
+  huang2025:
+    myeloid: {major: Immune}
+    epithelial: {major: Epithelial}
 
   # The own data: the final eight types of Mouse_Compensatory
   mouse_comp_30d:

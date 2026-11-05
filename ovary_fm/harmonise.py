@@ -14,6 +14,8 @@
 
 from __future__ import annotations
 
+import re
+
 import numpy as np
 import pandas as pd
 import scipy.sparse as sp
@@ -26,15 +28,29 @@ def _norm(label) -> str:
     return str(label).strip().lower()
 
 
+_STEM_SUFFIX = re.compile(r"(?:[\s_.-]*(?:cells?|cluster)|[\s_.-]*\d+[a-z]?|[\s_.-]+)+$", re.I)
+
+
+def label_stem(label: str) -> str:
+    """'Granulosa 3' -> 'granulosa', 'Theca_00' -> 'theca', 'Luteal Cells' -> 'luteal', 'GC_1' -> 'gc'."""
+    return _STEM_SUFFIX.sub("", _norm(label)).strip()
+
+
 def crosswalk_lookup(cw: dict, dataset: str, label: str) -> dict:
-    """One author label -> {major, fine, cl_id, cl_label, status}."""
+    """One author label -> {major, fine, cl_id, cl_label, status}: the dataset block, the
+    global map, then both again with the label's trailing number / suffix removed."""
     key = _norm(label)
     per_dataset = {_norm(k): v for k, v in (cw.get("datasets", {}).get(dataset) or {}).items()}
     global_map = {_norm(k): v for k, v in (cw.get("global") or {}).items()}
+    stem = label_stem(label)
     if key in per_dataset:
         entry, status = per_dataset[key], "mapped_dataset"
     elif key in global_map:
         entry, status = global_map[key], "mapped_global"
+    elif stem and stem != key and stem in per_dataset:
+        entry, status = per_dataset[stem], "mapped_stem"
+    elif stem and stem != key and stem in global_map:
+        entry, status = global_map[stem], "mapped_stem"
     else:
         return {"major": cw.get("unmapped_label", "Unassigned"), "fine": None, "cl_id": None,
                 "cl_label": None, "status": "unmapped"}
