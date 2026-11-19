@@ -65,7 +65,8 @@ datasets:
     source:
       type: url
       accession: OSF:924fz         # NOT GSE192722: that series is Lustgarten Guahmich 2023 (human theca, Comms Biol). Checked 2026-11-19.
-      urls: []                     # fill from the OSF file list: curl -s https://api.osf.io/v2/nodes/924fz/files/osfstorage/ (checklist step 3)
+      urls:                        # the OSF file list (2026-11-19): one zip, 301,769,964 bytes; fetch unpacks it into path/
+        - {url: "https://osf.io/download/dsf4r/", name: musCyclingOvaryData.zip}
       alt: "Broad Single Cell Portal SCP1914 (login required); Mouse_Compensatory's cell2location reference is a 28,014-cell processed copy"
     path: data/raw/morris2022      # the folder the files land in; qc reads an h5ad / mtx / csv inside it
     label_key: Level1              # Level0 (six types) or Level1 (follicle and corpus luteum states)
