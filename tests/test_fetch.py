@@ -50,3 +50,18 @@ def test_proxy_tiledb_config(monkeypatch):
     assert cfg == {"vfs.s3.proxy_host": "dtn03-e0", "vfs.s3.proxy_port": "3128", "vfs.s3.proxy_scheme": "http"}
     monkeypatch.delenv("https_proxy")
     assert fetch._proxy_tiledb_config() == {}
+
+
+def test_extract_zip_falls_back_to_unzip(tmp_path, monkeypatch):
+    archive = tmp_path / "d64.zip"
+    with zipfile.ZipFile(archive, "w") as z:
+        z.writestr("a.txt", "hello")
+    calls = []
+
+    def fake_extractall(self, folder, *a, **k):
+        raise NotImplementedError("That compression method is not supported")
+
+    monkeypatch.setattr(zipfile.ZipFile, "extractall", fake_extractall)
+    monkeypatch.setattr(fetch, "_extract_zip_external", lambda p, f: calls.append((p, f)))
+    out = fetch.extract_archive(archive, tmp_path)
+    assert calls == [(archive, tmp_path)] and out["members"] == 1

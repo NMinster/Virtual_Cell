@@ -102,6 +102,20 @@ def _safe_members(archive, folder: Path):
             raise SystemExit(f"archive member escapes {folder}: {name!r}")
 
 
+def _extract_zip_external(path: Path, folder: Path) -> None:
+    import shutil
+    import subprocess
+    if shutil.which("unzip"):
+        cmd = ["unzip", "-o", "-q", str(path), "-d", str(folder)]
+    elif shutil.which("7z"):
+        cmd = ["7z", "x", "-y", f"-o{folder}", str(path)]
+    else:
+        raise SystemExit(f"{path.name} uses a zip method Python cannot decode and neither `unzip` nor `7z` "
+                         f"is on PATH; unpack it by hand into {folder}")
+    print(f"  ~ python zipfile cannot decode {path.name}; running {' '.join(cmd[:2])}")
+    subprocess.run(cmd, check=True)
+
+
 def extract_archive(path: Path, folder: Path) -> dict:
     """Unpack a .zip / .tar* next to itself, once (a marker file records it)."""
     marker = folder / f".{path.name}.extracted"
@@ -111,8 +125,13 @@ def extract_archive(path: Path, folder: Path) -> dict:
     if path.suffix == ".zip":
         with zipfile.ZipFile(path) as z:
             _safe_members(z, folder)
-            z.extractall(folder)
             n = len(z.namelist())
+            try:
+                z.extractall(folder)
+            except NotImplementedError:
+                # Deflate64 (method 9), which OSF and Windows "send to zip" produce;
+                # Python's zipfile cannot decode it, Info-ZIP's unzip and 7z can.
+                _extract_zip_external(path, folder)
     else:
         with tarfile.open(path) as t:
             _safe_members(t, folder)
