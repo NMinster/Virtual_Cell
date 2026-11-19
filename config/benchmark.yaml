@@ -147,3 +147,5 @@ margins:
   scale_flat: 0.01                 # KR3: < this between 200 K and 1 M cells
   species_gain: 0.02               # KR4
   spatial_gain: 0.05               # KR5
+  time_interp_gain: 0.05           # KR6: Δt-conditioned model vs nearest-time-point b1 on held-out intermediate time points
+  time_interp_min_contexts: 2

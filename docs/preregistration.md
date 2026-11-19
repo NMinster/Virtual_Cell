@@ -20,10 +20,17 @@ disagree, this file wins and the yaml is fixed.
 | H3 | At ovary scale (0.2-2 M cells) model performance saturates early | a flat data-size curve past 200 K cells | a gain ≥ 0.01 per primary metric between 200 K and 1 M cells |
 | H4 | Adding human ovary data to pretraining does not help mouse tasks at matched compute | mouse-only ≥ mouse + human | mouse + human beats mouse-only by ≥ 0.02 |
 | H5 | A spatial head over the transcript model does not beat cell2location/RCTD + BANKSY on Visium HD | no gain on the segmented-cell arbiter or on the McKey domains | a gain ≥ 0.05 |
+| H6 | A transition model conditioned on elapsed time (Δt) and trained with a multi-step consistency loss predicts a held-out **intermediate** time point of a time-course family better than nearest-time-point retrieval (b1) | higher context score on the interpolation contexts | KR6 margins not met on ≥ 2 interpolation contexts |
 
 H1 is expected to fail (the September 2026 memo and the 2026 benchmarks say
 so); it is kept because its failure is the result that licenses dropping
 the "ovary embedding" claim. H2 is the hypothesis the project exists for.
+H6 (added 2026-11-19) is what separates a one-step conditional simulator
+from a world model that can be rolled forward in time; its interpolation
+contexts are the time-course families with ≥ 3 time points (ovulation:
+hCG 0/3/4/6/9/12 h across datasets; chemotherapy: sham/3 d/21 d; VCD:
+vehicle/30 d/90 d), with the middle point(s) held out and b1 defined as the
+nearest measured time point's delta.
 
 ## 2. Data
 
@@ -148,11 +155,16 @@ extension is logged.
 | C | scVI then scANVI on the corpus (the primary baseline), plus a masked-autoencoder MLP | 20 A100-hours |
 | Z | zero-shot scPRINT-2, UCE, TranscriptFormer through `ovary-fm fm` | inference |
 
-For T3 the condition head is a conditional count decoder on (control-set
-embedding, condition token) with control-matched dispersion in the
-sampling step; a set-attention transition module is the second design
-and is tried only if the first beats b1. Seeds: 0, 1, 2 for every arm;
-tables report the mean and the range.
+For T3 the condition head is an in-context set model (revised
+2026-11-19; §10): a set encoder over the context's control cells (the
+query), a condition prompt that is either a learned token for an in-corpus
+family or the set embedding of cells carrying the condition from another
+source, an elapsed-time input Δt, a set-attention transition module, and a
+negative-binomial count decoder with control-matched dispersion in the
+sampling step. Training order within arm B′: token prompts; cell prompts;
+Δt with the multi-step consistency loss. The earlier "decoder on a
+condition token" is the token-only configuration of the same model. Seeds:
+0, 1, 2 for every arm; tables report the mean and the range.
 
 ## 6. Decision rules
 
@@ -165,6 +177,7 @@ tables report the mean and the range.
 | KR3 scale | the data-size ablation | the primary metrics change by ≥ 0.01 between 200 K and 1 M cells | corpus growth stops; the flat curve is reported |
 | KR4 species | the species ablation | mouse + human beats mouse-only on mouse tasks by ≥ 0.02 at matched compute | mouse-only is the released model |
 | KR5 spatial | the spatial arm | ≥ 0.05 gain on the arbiter or the McKey domains over cell2location/RCTD + BANKSY | spatial arm dropped |
+| KR6 time | `tables/bench/scores_*_summary.csv`, interpolation contexts | the Δt-conditioned model's context score (against nearest-time-point b1) exceeds it by ≥ 0.05 with ≥ 4 of 6 members > 0, on ≥ 2 interpolation contexts | the model is reported as a one-step conditional simulator; Δt conditioning is kept only if it does not hurt KR2 |
 
 "Beats" means the mean over three seeds exceeds the comparator's by the
 margin; no significance test is attached to 2 vs 2 animals or to three
@@ -202,4 +215,5 @@ scANVI rows, the data-size and species curves, and every deviation.
 | --- | --- | --- | --- | --- |
 | 2026-11-04 | all | file created as a draft | — | no |
 | 2026-11-18 | §4 contexts | added, from the literature sweep in `plan_update_2026-11-18.md` §2.4: `benayoun_vcd_{3mo,10mo}_{30d,90d}` (chemical_menopause), `benayoun_foxl2_{4mo,9mo}` (genotype; `Foxl2` excluded), `benayoun_ageing_20mo` (ageing), `chemo_poi` (new family `chemotherapy`: busulfan + cyclophosphamide, 3 d and 21 d), `dhea_pcos` (drug) | the datasets exist and were not known on 2026-11-04; the file is still a draft | no (no real data scored yet) |
+| 2026-11-19 | §1, §5, §6 | H6 / KR6 added (Δt-conditioned transition, multi-step consistency, held-out intermediate time points, margin 0.05); §5 rewritten to describe the one model with its three prompt configurations | the corpus now has five time-course families; a time-rollable model is the stated goal (plan_update §2.5) | no |
 | 2026-11-18 | §5 arms | the T3 condition head is the in-context set model (query = control cells, prompt = condition token **or** condition cells) as the first design, not the second; a condition token is the degenerate prompt. Arc Stack (zero-shot, mouse via orthologs) joins arm Z. Arm A (scPRINT-2 continued pretraining) and the spatial arm (H5 / KR5) are deferred past 2027-05 and are not trained before the freeze | Stack (Jan 2026) showed in-context condition transfer works and is trainable; GPL/licence and the intern deadline for arm A and the spatial arm | no |

@@ -75,20 +75,37 @@ The NIH HPC hardware page now lists, in the gpu partition: **100 nodes ×
 nodes × 8 H200-141 GB (112 GPUs; 192 cores, 2.26 TB RAM per node)**, 20
 nodes × 8 L40-48 GB (160 GPUs), plus 60 × 4 V100-32 GB and the P100s
 ([hpc.nih.gov/systems/hardware.html](https://hpc.nih.gov/systems/hardware.html)).
-No 40 GB A100s remain. Consequences:
+No 40 GB A100s remain. Per-user limits, from `batchlim` and `freen` run on
+2026-11-19 (user minsternc):
+
+| Partition | Per-user cap | Max walltime | Nodes (free GPUs at the snapshot) | Use here |
+| --- | --- | --- | --- | --- |
+| `gpu` | **56 GPUs**, 1,008 CPUs | **10 days** | a100: 83 × 4 (41 free); l40: 20 × 8 (82 free); v100x: 49 × 4 | all training and `fm` inference; whole ablation grids in parallel |
+| `gpuh200` | **8 GPUs**, 384 CPUs | **1 day** | 7 × 8 H200-141 GB, 2.26 TB RAM (11 free) | one node per run; checkpoint every ≤ 20 h and chain with `afterok` |
+| `quick` | — | 4 h | includes 7 H200 nodes (47 free) and 12 A100 nodes | smoke tests of a training config on real data |
+| `interactive` | 4 GPUs, 2 jobs | 36 h | — | debugging a training step |
+| `largemem` | 6 TB mem | 10 days | 3 TB nodes (4 free) | `harmonise`, `bench`, `score` on the full corpus |
+| `norm` | 8,000 CPUs, 60 TB mem | 10 days | up to 1.5 TB nodes | `fetch`, `qc`, scBaseCount ingest as swarms |
+
+Consequences:
 
 - The memo's extrapolation of 200-500 A100-hours for a 20-90 M model on
-  1-5 M cells stands, but on an H200 node (8 × 141 GB) a run that needed
-  four A100-days needs roughly one H200-day; the whole 2,500-GPU-hour
-  budget of `project_plan.md` §6.2 is a few node-weeks, not four months.
-- The binding constraint is therefore **per-user caps and queue time, not
-  GPU count**. `batchlim` and `freen` on Biowulf give the current limits;
-  they could not be read from outside and are the first thing to record
-  (section 5, week 1). `biowulf/submit.sh` requests `gpu:a100:1`; add an
-  `SUBMIT_GRES=gpu:h200:N` override and a `--constraint=gpuh200` path.
-- A 256 GB A100 node cannot hold a 2 M × 30 K dense corpus; the H200
-  nodes (2.26 TB) can, which matters for the `harmonise` and `bench`
-  stages as much as for training.
+  1-5 M cells stands; at 56 A100s per user the entire ablation grid of
+  `project_plan.md` §6.2 (≈ 2,500 A100-h) runs **concurrently in about two
+  days of wall time** as 12-14 four-GPU jobs. Compute is not a constraint
+  on this project at any point; engineering time is.
+- H200s are a separate partition with a one-day cap, so every training
+  script must checkpoint and resume (`--resume` on the Lightning / Composer
+  trainer, `afterok` chaining in `biowulf/submit.sh`). Use them for the
+  memory-bound cases (large batch, long gene context) and the A100s for
+  everything that fits in 80 GB, which at ≤ 30 M parameters is everything.
+- A 243 GB A100 node cannot hold a 2 M × 30 K dense corpus; `harmonise`,
+  `bench` and `score` go to `largemem` (3 TB) or an H200 node, and the
+  training data loader streams from sharded h5ad / parquet, never from one
+  in-memory object.
+- `biowulf/submit.sh` now takes `SUBMIT_PARTITION=gpuh200
+  SUBMIT_GRES=gpu:h200:8 SUBMIT_TIME=24:00:00` and the default GPU request
+  stays `gpu:a100:1` on `gpu`.
 
 ### 2.2 Modelling: in-context condition transfer is now the paradigm
 
@@ -196,7 +213,55 @@ Cross-check the Benayoun counts against the figure legends and the
 Figshare objects on download; the OMIX route for the chemo data is the one
 access risk and is tried in week 1.
 
-### 2.5 Tooling
+### 2.5 Is this a world model? Partly; here is what makes it one
+
+The in-context head of §2.2 is a conditional generative model of ovarian
+cell state under intervention: f(state, action) → next state, scored on
+exactly that. That is what Arc's STATE ("state transition") and the field's
+"virtual cell" mean by the phrase, and it is what the intern receives. It
+is **not yet a world model in the stricter sense**, for three reasons:
+
+1. **No dynamics.** It maps control → perturbed in one jump per condition;
+   nothing conditions on elapsed time or enforces consistency across
+   steps. A world model has a transition operator s(t + Δt) = T(s(t), a, Δt)
+   that can be rolled forward.
+2. **No composition.** "Chemo, then AMH" or "ooph, then ageing" has no
+   mechanism; each condition is a separate prompt.
+3. **No latent state to roll out in.** Every prediction re-encodes real
+   control cells rather than advancing a latent state.
+
+The updated corpus makes (1) cheap and testable, because it is unusually
+time-structured: hCG 0/3/4/6/9/12 h (Huang, Morris, the ex-vivo series),
+chemotherapy 3/21 d, VCD 30/90 d at two induction ages, ooph 30/120 d,
+ageing 3/4/9/20 months. Five families with ≥ 2 time points is more than
+any perturbation benchmark offers. So, added to the design and to the
+preregistration draft as H6:
+
+- **Δt as a conditioning input** to the transition module (the manifest
+  already carries `time_h` and `age_days` per condition), beside the
+  condition prompt.
+- **Multi-step consistency loss**: predict hCG 12 h from 0 h directly and
+  via the model's own 4 h prediction; penalise the disagreement (the
+  latent-rollout consistency of model-based RL, applied to count
+  distributions through the NB decoder's mean and dispersion).
+- **The test is interpolation in time**: hold out an intermediate time
+  point the model never saw (the ex-vivo 6 h and 9 h follicles; chemo 3 d
+  when trained on sham and 21 d) as T3 contexts. The baseline b1 for these
+  is nearest-time-point retrieval.
+- **H6 / KR6**: the Δt-conditioned model beats nearest-time-point retrieval
+  on held-out intermediate time points by ≥ 0.05 context score with ≥ 4 of
+  6 members > 0 on ≥ 2 such contexts; otherwise the model is reported as a
+  one-step conditional simulator, which is still the full intern
+  deliverable.
+- **Composition (2) stays out of the six months**: no ovary dataset with
+  sequential interventions exists to score it. The Δt-conditioned
+  architecture makes it a prompt-chaining experiment later, not a redesign.
+- **A latent state (3)** falls out of the set encoder (the query set's
+  pooled embedding is the state); whether rolling it forward without
+  re-encoding cells holds up is an intern project, scored on the same
+  interpolation contexts.
+
+### 2.6 Tooling
 
 `cell-eval2` is current on PyPI with the `vcc2026` preset
 (`EvalConfig.from_preset("vcc2026")`), GPU extras and out-of-core
@@ -225,7 +290,7 @@ Biowulf gpu partition from month 3. Months are four-week blocks from today.
 
 | Month | Weeks | Work | Gate / output |
 | --- | --- | --- | --- |
-| **1** (Nov 18 - Dec 15) | 1 | `batchlim`, `freen`, record GPU caps; checklist §0-§2 (verify the snippet numbers that drive the design); fetch isola, morris, huang; try the OMIX download; download the Benayoun Figshare objects; `cell-eval2` on the synthetic object | caps recorded; 3 datasets raw on disk |
+| **1** (Nov 18 - Dec 15) | 1 | GPU caps recorded (done 2026-11-19, §2.1); the week-1 commands of §5; checklist §0-§2 (verify the snippet numbers that drive the design); fetch isola, morris, huang; try the OMIX download; download the Benayoun Figshare objects; `cell-eval2` on the synthetic object | 3 datasets raw on disk; OMIX route known |
 | | 2-4 | `qc` and `harmonise` for the first 3; crosswalk v0 to the lab; manifest entries for the 2.4 datasets filled from their downloads; `fm --tool scprint2` single-GPU check | **first ceilings table** (3 contexts); crosswalk_review.csv out for review |
 | **2** (Dec 15 - Jan 12) | 5-8 | fetch + QC: Benayoun (3 models), chemo-POI, Wang/Suh, ex-vivo ovulation series, Gaylord mouse, Garcia-Alonso; scBaseCount mouse ovary ingest (the 53 UBERON experiments) with hand-curated condition metadata; b1 sources exist for every family with ≥ 2 datasets | **G0** checked (≥ 0.75 M mouse obs; crosswalk ≥ 90 %); ceilings for ≥ 8 contexts; **G1** decided |
 | **3** (Jan 12 - Feb 9) | 9-12 | baselines scored (b0, b1, ridge, scVI counterfactual); arm C scVI/scANVI on the corpus (GPU, < 20 h); T1 table with scANVI, logreg, CellTypist, and the three generalists; **freeze the preregistration** (with the 2.4 contexts and the in-context head written in; re-read the VCC 2026 results first) | baseline and T1 tables; `frozen_at` filled |
@@ -247,11 +312,16 @@ Dropped from the first six months, with the reason:
 - **T2 and T4** stay out of the scaffold.
 
 Compute, revised: arm C < 20 GPU-h; arm B′ ≈ 100-300 A100-h per run × (1
-main + 3 seeds + 3 data-size points × 3 seeds + leave-one-out folds) ≈
-1,500-2,500 A100-h ≈ 400-700 H200-h. At a cap of 8 GPUs per user that is
-2-4 node-weeks of wall time in months 4-5; at 4 GPUs it still fits. The
-memory-bound stages (`harmonise`, `bench`) go to an H200 node or a largemem
-node, not the 256 GB A100 nodes.
+main + 3 seeds + 3 data-size points × 3 seeds + leave-one-out folds + the
+Δt-consistency variant) ≈ 2,000-3,000 A100-h. At the measured cap of 56
+GPUs per user on `gpu` with a 10-day walltime, that is **≈ 2-3 days of wall
+time with the grid run in parallel** (14 jobs × 4 A100s), or one `gpuh200`
+node chained in 24 h segments for the memory-bound runs. Months 4-5 are
+therefore bounded by engineering and by reading results, not by the
+queue; the plan keeps the sequential order (token prompts → cell prompts →
+Δt) because each step's result decides the next, not because of compute.
+The memory-bound stages (`harmonise`, `bench`, `score`) go to `largemem`
+(3 TB nodes, 6 TB per user), not the 243 GB A100 nodes.
 
 ### 4.1 What the intern receives
 
@@ -273,7 +343,93 @@ node, not the 256 GB A100 nodes.
   (d) Stack fine-tuning with the frozen-teacher recipe on the ovary corpus
   as a licence-permitting comparison; (e) arm A if GPL is acceptable.
 
-## 5. Changes made to the repo with this update
+## 5. Getting started: the first two weeks, as commands
+
+Everything below runs on Biowulf from a login node unless it says
+otherwise; nothing needs a GPU yet. Each step writes something the next
+one reads, and each day ends with a commit.
+
+**Day 1: environment and the proof the plumbing runs there.**
+
+```bash
+ssh biowulf.nih.gov
+cd /data/$USER && git clone https://github.com/NMinster/Virtual_Cell.git && cd Virtual_Cell
+git checkout plan-update-2026-11-18          # or main once PR #2 is merged
+bash biowulf/setup_env.sh                    # conda env `ovary_fm` + editable install
+export OVARY_FM_DATA=/data/$USER/ovary_fm/data
+export OVARY_FM_RESULTS=/data/$USER/ovary_fm/results
+echo 'export OVARY_FM_DATA=/data/'$USER'/ovary_fm/data'       >> ~/.bashrc
+echo 'export OVARY_FM_RESULTS=/data/'$USER'/ovary_fm/results' >> ~/.bashrc
+sinteractive --cpus-per-task=4 --mem=16g --time=1:00:00      # tests off the login node
+bash biowulf/run.sh pytest -q                                 # expect 11 passed
+bash biowulf/run.sh inspect                                   # the manifest: what is enabled, what is fill_in
+exit
+```
+
+Also on day 1, from a login node, the two downloads whose success decides
+the context list (both are "does the route work", not full ingests):
+
+```bash
+# OMIX (CNCB) for the chemotherapy nuclei: find the file list for OMIX015442
+# at https://ngdc.cncb.ac.cn/omix/release/OMIX015442 and test one file with
+# the proxy on a compute node:
+bash biowulf/submit.sh python -c "import urllib.request,sys; print(urllib.request.urlopen(sys.argv[1]).status)" '<one OMIX file URL>'
+# Benayoun annotated objects (Figshare 10.6084/m9.figshare.28934126):
+bash biowulf/submit.sh python -c "import urllib.request; print(urllib.request.urlopen('https://api.figshare.com/v2/articles/28934126').read()[:2000])"
+```
+
+If OMIX refuses or is unusably slow, email the corresponding author for the
+processed matrices that week; the chemotherapy family is the one that
+cannot be replaced from GEO.
+
+**Days 2-3: the three enabled datasets, raw to QC'd.**
+
+```bash
+bash biowulf/submit.sh fetch --dataset isola2024      # Census API
+bash biowulf/submit.sh fetch --dataset morris2022     # GSE192722
+bash biowulf/submit.sh fetch --dataset huang2025      # GSE294534
+squeue -u $USER; tail -f logs/fetch_*.out
+# when each lands: confirm the cell counts against docs/first_results_checklist.md §4,
+# fix the fill_in fields (label_key, animal_key, condition.map) from the obs columns, then
+bash biowulf/submit.sh qc --dataset isola2024         # repeat per dataset; writes tables/qc/
+```
+
+**Days 4-5: harmonise, crosswalk, first ceilings.**
+
+```bash
+SUBMIT_PARTITION=largemem SUBMIT_MEM=500g bash biowulf/submit.sh chain harmonise bench
+# outputs: tables/harmonise/crosswalk_review.csv  -> send to the lab (plan §4.3)
+#          tables/bench/ceilings.csv              -> the first result: r per (context, condition, compartment)
+bash biowulf/submit.sh chain predict score t1 report  # b0/b1 baselines, label transfer, results/report/first_results.md
+```
+
+At this point three of the four contexts in `benchmark.yaml` have a
+ceiling, b0 and (for ageing and ovulation, once a second dataset per family
+is in) b1. Read `ceilings.csv` before anything else: it says which
+compartments are scorable at all with the animals available.
+
+**Week 2: the new datasets and the two GPU checks.**
+
+```bash
+# Fill the manifest entries for benayoun_vcd / benayoun_foxl2 / benayoun_ageing from the
+# Figshare objects (R/rds_to_mtx.R converts a Seurat .rds), then
+bash biowulf/submit.sh fetch --dataset benayoun_vcd && bash biowulf/submit.sh qc --dataset benayoun_vcd   # etc.
+# scBaseCount mouse ovary: the 53 UBERON experiments and their SRA condition metadata
+bash biowulf/submit.sh python scripts/scbasecount_metadata.py --species mouse
+# GPU check 1: Arc's scorer agrees with the lite scorer on the synthetic bundles
+bash biowulf/run.sh pip install 'cell-eval2[gpu]'
+bash biowulf/submit.sh score --pred $OVARY_FM_RESULTS/predictions/stub.h5ad --name stub_arc --scorer cell-eval2
+# GPU check 2: a real base model runs on Biowulf at all (one GPU, quick partition)
+SUBMIT_PARTITION=quick SUBMIT_TIME=3:00:00 bash biowulf/submit.sh fm --tool scprint2
+```
+
+End of week 2: `ovary-fm report` has real numbers in every table it can
+fill, the crosswalk is with the lab, and the month-2 fetch list is a
+sequence of `submit.sh fetch` lines. The first model (arm C, scVI/scANVI)
+is a month-3 item and should not be started before the ceilings and
+baselines are read.
+
+## 6. Changes made to the repo with this update
 
 - This file; `README.md` points to it.
 - `config/corpus.yaml`: `benayoun_vcd` replaced by `benayoun_menopause`
@@ -285,29 +441,33 @@ node, not the 256 GB A100 nodes.
   `benayoun_vcd_10mo_30d`, `benayoun_vcd_10mo_90d`, `benayoun_foxl2_4mo`,
   `benayoun_foxl2_9mo`, `benayoun_ageing_20mo`, `chemo_poi_3d_21d`,
   `dhea_pcos`; the `Foxl2` exclusion for the genotype contexts.
-- `docs/preregistration.md` §10: one deviations row (the file is a draft,
-  so this is a recorded edit, not a deviation from a frozen rule): the
-  contexts above, the in-context head as the first T3 design, Stack as an
+- `docs/preregistration.md`: §1 gains H6 (time interpolation), §6 gains
+  KR6; §10 has the deviations rows (the file is a draft, so these are
+  recorded edits, not deviations from a frozen rule): the contexts above,
+  the in-context head as the first T3 design, Δt conditioning, Stack as an
   arm Z member, arm A and the spatial arm deferred.
-- `biowulf/submit.sh`: `SUBMIT_GRES` override so a stage can ask for
-  `gpu:h200:N`.
+- `config/benchmark.yaml`: `margins.time_interp_gain: 0.05` for KR6.
+- `biowulf/submit.sh`: `SUBMIT_GRES` and `SUBMIT_PARTITION` overrides so a
+  stage can ask for `gpuh200` nodes.
 
-Nothing here touches the metrics, margins or kill rules.
+The six `vcc2026` members and the existing margins are untouched; KR6 is
+an addition with its own margin.
 
-## 6. Risks specific to the six-month plan
+## 7. Risks specific to the six-month plan
 
 | Risk | Mitigation |
 | --- | --- |
 | OMIX (CNCB) download fails or is slow from Biowulf | try week 1; fall back to the authors; the chemotherapy family is then descriptive until a GEO set appears |
 | Benayoun groups have < 2 animals per cell × condition after QC | the ceilings table says so in month 2; contexts without r are listed, not scored |
-| GPU caps per user are low (e.g. 4) | arm B′ is ≤ 30 M params and fits one GPU; serialise seeds; drop data-size points before seeds |
+| `gpuh200` is capped at 24 h and 8 GPUs | checkpoint/resume in every trainer; `afterok` chains; the A100 `gpu` partition (56 GPUs, 10 days) is the default and has no such cap |
+| Queue wait on `gpu` when 41 of 332 A100s are free | submit the grid as independent jobs so partial completion is useful; `quick` (4 h, 16 A100s + 47 H200s free) for config smoke tests |
 | In-context head underperforms b1 everywhere | KR2 says it is a negative result; the intern deliverable is unchanged (simulate then emits b1's prediction with `prediction_status: baseline_b1`) |
 | VCC 2026 results (late Nov) show something that changes the head design | re-read before the month-3 freeze; the benchmark does not change |
 | Nick's time is split across projects | the month-1 and month-2 work is pipeline running on Biowulf, not modelling; each month has one output that stands alone |
 
-## 7. Sources consulted for this update (beyond the memo's register)
+## 8. Sources consulted for this update (beyond the memo's register)
 
-- NIH HPC hardware: https://hpc.nih.gov/systems/hardware.html ; user guide https://hpc.nih.gov/docs/userguide.html
+- NIH HPC hardware: https://hpc.nih.gov/systems/hardware.html ; user guide https://hpc.nih.gov/docs/userguide.html ; `batchlim` and `freen` output of 2026-11-19 (§2.1)
 - Stack: https://www.biorxiv.org/content/10.64898/2026.01.09.698608v1 ; https://github.com/arcinstitute/stack ; https://arcinstitute.org/news/foundation-model-stack
 - PertDiffBench: https://www.biorxiv.org/content/10.64898/2026.06.13.732013v1
 - In-the-wild VC benchmark: https://arxiv.org/abs/2604.27646
