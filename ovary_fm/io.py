@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import gzip
 import json
+import re
 from pathlib import Path
 
 import numpy as np
@@ -73,8 +74,44 @@ def _is_integer(X, n: int = 20000) -> bool:
     return bool(np.allclose(sample, np.rint(sample)))
 
 
-def read_counts(path: Path):
-    """An .h5ad, a 10x .h5, a folder with one of those or an mtx / csv matrix."""
+def read_counts(path: Path, options: dict | None = None):
+    """An .h5ad, a 10x .h5, a folder with one of those or an mtx / csv matrix.
+
+    `options` is the manifest entry's optional `read:` block:
+      csv_chunk_rows     rows (genes) per chunk when a csv matrix is read (default 512)
+      csv_min_counts     drop barcodes whose total counts fall below this right after
+                         reading; for unfiltered droplet matrices (inDrops, raw 10x)
+      unmangle_r_names   undo R's make.names on gene symbols ("X0610006L08Rik" -> "0610006L08Rik",
+                         "mt.Nd6" -> "mt-Nd6")
+      barcode_regex      a regex with named groups applied to each barcode; every group
+                         becomes an obs column (library, sample, ...)
+    """
+    adata = _read_any(path, options or {})
+    opts = options or {}
+    if opts.get("unmangle_r_names"):
+        adata.var_names = pd.Index([unmangle_r_name(g) for g in adata.var_names.astype(str)])
+    if opts.get("barcode_regex"):
+        pattern = re.compile(opts["barcode_regex"])
+        parts = [pattern.match(b) for b in adata.obs_names.astype(str)]
+        n_hit = sum(m is not None for m in parts)
+        for group in pattern.groupindex:
+            adata.obs[group] = [m.group(group) if m else None for m in parts]
+        print(f"  barcode_regex matched {n_hit:,} / {adata.n_obs:,} barcodes -> obs{list(pattern.groupindex)}")
+    floor = int(opts.get("csv_min_counts") or 0)
+    if floor > 0:
+        totals = np.asarray(adata.X.sum(axis=1)).ravel()
+        keep = totals >= floor
+        print(f"  csv_min_counts={floor}: {int(keep.sum()):,} of {adata.n_obs:,} barcodes kept")
+        adata = adata[keep].copy()
+    return adata
+
+
+def unmangle_r_name(name: str) -> str:
+    out = re.sub(r"^X(?=\d)", "", name)
+    return out.replace(".", "-")
+
+
+def _read_any(path: Path, opts: dict):
     import anndata as ad
     import scanpy as sc
 
@@ -94,7 +131,7 @@ def read_counts(path: Path):
         csv = sorted(p for p in list(path.glob("*.csv*")) + list(path.glob("*.tsv*"))
                      if "meta" not in p.name.lower())
         if csv:
-            return _read_csv_matrix(csv[0], path)
+            return _read_csv_matrix(csv[0], path, chunk_rows=int(opts.get("csv_chunk_rows") or 512))
         raise FileNotFoundError(f"no .h5ad, .h5, matrix.mtx or csv matrix under {path} "
                                 f"(a Seurat .rds is converted first with R/rds_to_mtx.R)")
     if path.suffix == ".h5ad":
@@ -102,7 +139,7 @@ def read_counts(path: Path):
     if path.suffix == ".h5":
         return sc.read_10x_h5(path)
     if path.suffix in (".csv", ".tsv", ".gz"):
-        return _read_csv_matrix(path, path.parent)
+        return _read_csv_matrix(path, path.parent, chunk_rows=int(opts.get("csv_chunk_rows") or 512))
     raise ValueError(f"cannot read {path}")
 
 
@@ -110,28 +147,60 @@ def _read_mtx_dir(folder: Path):
     import scanpy as sc
 
     adata = sc.read_10x_mtx(folder, var_names="gene_symbols", make_unique=True)
-    meta = sorted(folder.glob("*meta*.csv*")) + sorted(folder.parent.glob("*meta*.csv*"))
+    return _join_metadata(adata, folder, folder.parent)
+
+
+def _metadata_files(*folders: Path) -> list[Path]:
+    out = []
+    for folder in folders:
+        for pattern in ("*meta*.csv*", "*meta*.tsv*", "*meta*.txt*"):
+            out += sorted(folder.glob(pattern))
+    return out
+
+
+def read_metadata_table(path: Path) -> pd.DataFrame:
+    """A per-cell table indexed by barcode. Handles the Broad Single Cell Portal
+    layout (a second header row starting with TYPE) and csv / tsv."""
+    sep = "," if ".csv" in path.name else "\t"
+    head = pd.read_csv(path, sep=sep, nrows=2, header=None, dtype=str)
+    skip = [1] if head.shape[0] > 1 and str(head.iloc[1, 0]).strip().upper() == "TYPE" else None
+    return pd.read_csv(path, sep=sep, index_col=0, skiprows=skip, low_memory=False)
+
+
+def _join_metadata(adata, *folders: Path):
+    meta = _metadata_files(*folders)
     if meta:
-        obs = pd.read_csv(meta[0], index_col=0)
-        adata.obs = adata.obs.join(obs, how="left")
+        obs = read_metadata_table(meta[0])
+        obs.index = obs.index.astype(str)
+        hit = adata.obs_names.isin(obs.index).sum()
+        print(f"  metadata {meta[0].name}: {obs.shape[1]} columns; {hit:,} / {adata.n_obs:,} barcodes matched")
+        adata.obs = adata.obs.join(obs, how="left", rsuffix="_meta")
     return adata
 
 
-def _read_csv_matrix(path: Path, folder: Path):
-    """A genes x cells count matrix with gene names in the first column; an
-    optional *meta*.csv beside it with one row per cell."""
+def _read_csv_matrix(path: Path, folder: Path, chunk_rows: int = 512):
+    """A genes x cells count matrix with gene names in the first column, read
+    in row chunks straight into a sparse matrix (a 20 GB unfiltered inDrops csv
+    never exists densely in memory); an optional *meta* table beside it with
+    one row per barcode."""
     import anndata as ad
 
     sep = "\t" if ".tsv" in path.name else ","
-    frame = pd.read_csv(path, sep=sep, index_col=0)
-    X = sp.csr_matrix(frame.to_numpy(dtype=np.float32).T)
-    adata = ad.AnnData(X=X, obs=pd.DataFrame(index=frame.columns.astype(str)),
-                       var=pd.DataFrame(index=frame.index.astype(str)))
-    meta = sorted(folder.glob("*meta*.csv*"))
-    if meta:
-        obs = pd.read_csv(meta[0], index_col=0)
-        adata.obs = adata.obs.join(obs, how="left")
-    return adata
+    header = pd.read_csv(path, sep=sep, nrows=0)
+    columns = pd.Index(header.columns[1:].astype(str))
+    dtypes = {c: np.float32 for c in header.columns[1:]}
+    print(f"  csv matrix {path.name}: {len(columns):,} columns (barcodes); reading {chunk_rows} genes per chunk")
+    blocks, genes = [], []
+    for i, chunk in enumerate(pd.read_csv(path, sep=sep, index_col=0, chunksize=chunk_rows,
+                                          dtype=dtypes, low_memory=False)):
+        blocks.append(sp.csr_matrix(chunk.to_numpy(dtype=np.float32)))
+        genes.extend(chunk.index.astype(str))
+        if i % 10 == 9:
+            print(f"    {len(genes):,} genes read", flush=True)
+    X = sp.vstack(blocks, format="csr").T.tocsr()      # cells x genes
+    adata = ad.AnnData(X=X, obs=pd.DataFrame(index=columns), var=pd.DataFrame(index=pd.Index(genes)))
+    print(f"  csv matrix: {adata.n_obs:,} barcodes x {adata.n_vars:,} genes, {X.nnz:,} non-zeros")
+    return _join_metadata(adata, folder)
 
 
 def standardise(adata, gene_key: str | None = None, dataset: str | None = None):

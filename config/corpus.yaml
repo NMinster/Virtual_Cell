@@ -68,19 +68,24 @@ datasets:
       urls:                        # the OSF file list (2026-11-19): one zip, 301,769,964 bytes; fetch unpacks it into path/
         - {url: "https://osf.io/download/dsf4r/", name: musCyclingOvaryData.zip}
       alt: "Broad Single Cell Portal SCP1914 (login required); Mouse_Compensatory's cell2location reference is a 28,014-cell processed copy"
-    path: data/raw/morris2022      # the folder the files land in; qc reads an h5ad / mtx / csv inside it
-    label_key: Level1              # Level0 (six types) or Level1 (follicle and corpus luteum states)
+    path: data/raw/morris2022      # the folder: musMaryData.csv (genes x barcodes, 25,289 x 403,424, 20 GB, unfiltered inDrops) + a *meta* table
+    read:                          # how the csv is read (ovary_fm.io.read_counts)
+      csv_chunk_rows: 512
+      csv_min_counts: 1000         # the authors kept 1,000-20,000 UMI; 403 K barcodes are mostly empty droplets
+      unmangle_r_names: true       # "X0610006L08Rik" -> "0610006L08Rik", "mt.Nd6" -> "mt-Nd6"
+      barcode_regex: '^mary_(?P<library>\d+)_(?P<sample>[^_]+)_\d+$'   # mary_34557529_1.1-1A_000001 -> library, sample
+    label_key: Level1              # from the SCP1914 metadata table once it sits in the folder (Level0 six types / Level1 states)
     gene_key: null
-    animal_key: null               # fill in: the per-mouse column once the object is read
+    animal_key: sample             # the inDrops sample code (1.1-1A, 4.1-4D, ...); confirm one sample = one mouse from the metadata
     condition:
-      key: stage                   # fill in: the column with proestrus / estrus / metestrus / diestrus / PMSG-hCG 8 h / lactation
+      key: stage                   # from the SCP1914 metadata table; the csv itself carries no stage. Until the table is in the folder, qc runs with condition unset
       map: {proestrus: proestrus, estrus: estrus, metestrus: metestrus, diestrus: diestrus,
             "pmsg_hcg_8h": hcg_8h, lactating: lactating}
       family: cycle
       control: diestrus
       time_h: {hcg_8h: 8}
-    status: fill_in
-    notes: "Morris, Meinsohn et al. 2022, eLife 11:e77239, the cycling adult ovary (Pépin lab). >34,000 cells (eLife abstract); deposited on OSF 924fz and SCP1914, not GEO; the 28,014-cell reused object is the cell2location reference of Mantri 2024. The only estrous-staged whole-ovary atlas."
+    status: fill_in                # until scp1914 metadata (stage, Level0/1 labels per barcode) is in data/raw/morris2022/
+    notes: "Morris, Meinsohn et al. 2022, eLife 11:e77239, the cycling adult ovary (Pépin lab). >34,000 cells (eLife abstract); deposited on OSF 924fz (the unfiltered count csv) and SCP1914 (labels + stage per barcode; login), not GEO; the 28,014-cell reused object is the cell2location reference of Mantri 2024. The only estrous-staged whole-ovary atlas."
 
   - name: huang2025
     enabled: true

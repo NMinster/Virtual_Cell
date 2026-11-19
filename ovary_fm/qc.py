@@ -126,7 +126,7 @@ def qc_one(cfg, entry: dict):
     q = cfg["qc"]
     name = entry["name"]
     species = entry.get("species", "mouse")
-    adata = standardise(read_counts(dataset_path(cfg, entry)), gene_key=entry.get("gene_key"), dataset=name)
+    adata = standardise(read_counts(dataset_path(cfg, entry), entry.get("read")), gene_key=entry.get("gene_key"), dataset=name)
     print(f"  read {adata.n_obs:,} cells x {adata.n_vars:,} genes")
     metrics = cell_metrics(adata, species, cfg)
     modality = entry.get("suspension_type")
