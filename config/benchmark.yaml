@@ -60,6 +60,7 @@ t3:
     chemical_menopause: []
     genotype: []                   # plus the knocked-out gene, per context (`exclude` below)
     drug: []
+    chemotherapy: []               # no defining genes excluded: the response is the question
     surgery: []
 
   contexts:
@@ -84,6 +85,56 @@ t3:
       control: sham
       perturbed: [ooph_30d]
       held_out: true
+    # --- added 2026-11-18 (docs/plan_update_2026-11-18.md §2.4); condition names
+    #     follow the manifest maps and are confirmed when each dataset is QC'd.
+    #     Each VCD context has its own age-matched vehicle control.
+    - name: benayoun_vcd_3mo_30d
+      dataset: benayoun_vcd
+      family: chemical_menopause
+      control: vehicle_3mo_30d
+      perturbed: [vcd_3mo_30d]
+    - name: benayoun_vcd_3mo_90d
+      dataset: benayoun_vcd
+      family: chemical_menopause
+      control: vehicle_3mo_90d
+      perturbed: [vcd_3mo_90d]
+    - name: benayoun_vcd_10mo_30d
+      dataset: benayoun_vcd
+      family: chemical_menopause
+      control: vehicle_10mo_30d
+      perturbed: [vcd_10mo_30d]
+    - name: benayoun_vcd_10mo_90d
+      dataset: benayoun_vcd
+      family: chemical_menopause
+      control: vehicle_10mo_90d
+      perturbed: [vcd_10mo_90d]
+    - name: benayoun_foxl2_4mo
+      dataset: benayoun_foxl2
+      family: genotype
+      control: wt_4mo
+      perturbed: [foxl2_het_4mo]
+      exclude: [Foxl2]
+    - name: benayoun_foxl2_9mo
+      dataset: benayoun_foxl2
+      family: genotype
+      control: wt_9mo
+      perturbed: [foxl2_het_9mo]
+      exclude: [Foxl2]
+    - name: benayoun_ageing_20mo
+      dataset: benayoun_ageing
+      family: ageing
+      control: age_4mo
+      perturbed: [age_20mo]
+    - name: chemo_poi
+      dataset: chemo_poi_2026
+      family: chemotherapy
+      control: sham
+      perturbed: [chemo_3d, chemo_21d]
+    - name: dhea_pcos
+      dataset: dhea_pcos_2026
+      family: drug
+      control: vehicle
+      perturbed: [dhea]
 
 # --- the margins and kill rules (docs/preregistration.md) ---------------------
 margins:

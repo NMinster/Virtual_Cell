@@ -19,6 +19,7 @@
 #     squeue -u $USER; tail -f logs/<stage>_<jobid>.out; scancel <jobid>
 # Resources per stage can be overridden for one submission:
 #     SUBMIT_MEM=200g SUBMIT_CPUS=16 SUBMIT_TIME=36:00:00 bash biowulf/submit.sh bench
+#     SUBMIT_GRES=gpu:h200:2 SUBMIT_MEM=400g bash biowulf/submit.sh train --arm c
 # =============================================================================
 set -euo pipefail
 
@@ -68,6 +69,9 @@ submit() {
     read -r cpus mem time partition gres <<< "$(resources "${stages}" "$*")"
     cpus="${SUBMIT_CPUS:-${cpus}}"; mem="${SUBMIT_MEM:-${mem}}"
     time="${SUBMIT_TIME:-${time}}"; partition="${SUBMIT_PARTITION:-${partition}}"
+    # SUBMIT_GRES=gpu:h200:2 (or gpu:a100:4) overrides the GPU request; Biowulf
+    # has 4 x A100-80GB and 8 x H200-141GB nodes (hpc.nih.gov/systems/hardware.html).
+    if [[ -n "${SUBMIT_GRES:-}" ]]; then gres="--gres=${SUBMIT_GRES}"; fi
     local extra=()
     [[ -n "${gres:-}" ]] && extra+=("${gres}")
     if [[ -n "${dep}" ]]; then

@@ -18,6 +18,7 @@ dataset the tests run end to end.
 | --- | --- |
 | [`docs/ovary_foundation_model_research.md`](docs/ovary_foundation_model_research.md) | The research memo (2026-11-03): the state of single-cell foundation models, the measured ovary gap (Census, scBaseCount, Tahoe-100M, the model corpora), the public ovary data inventory, the Challenge's 2026 scoring contract, cross-context perturbation methods, licences, compute and scaling, the ovary tools gap. Measured tables in [`docs/data/`](docs/data/). |
 | [`docs/project_plan.md`](docs/project_plan.md) | The plan: corpus, held-out-context benchmark, model arms, gates and kill rules, the spatial arm, how the own data plug in, a 12-month timeline. |
+| [`docs/plan_update_2026-11-18.md`](docs/plan_update_2026-11-18.md) | **Current.** The virtual-ovary target translated into deliverables; the literature and Biowulf update (Stack, in-context prompts, H200s, the new chemotherapy / menopause / PCOS datasets); the six-month, intern-ready plan that supersedes §11 of the project plan. |
 | [`docs/preregistration.md`](docs/preregistration.md) | The rules, frozen before any model is trained: hypotheses, tasks, members, baselines, replicate, exclusions, margins, deviations log. **Draft until `frozen_at` is filled.** |
 | [`docs/first_results_checklist.md`](docs/first_results_checklist.md) | Step by step from a clean clone to the three first tables (ceilings, baseline scores, label transfer), with the commands and what good looks like. |
 
