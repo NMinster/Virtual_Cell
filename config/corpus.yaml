@@ -64,8 +64,9 @@ datasets:
     sex: female
     source:
       type: url
-      accession: GSE192722
-      urls: []                     # fill from https://ftp.ncbi.nlm.nih.gov/geo/series/GSE192nnn/GSE192722/suppl/ (checklist step 3)
+      accession: OSF:924fz         # NOT GSE192722: that series is Lustgarten Guahmich 2023 (human theca, Comms Biol). Checked 2026-11-19.
+      urls: []                     # fill from the OSF file list: curl -s https://api.osf.io/v2/nodes/924fz/files/osfstorage/ (checklist step 3)
+      alt: "Broad Single Cell Portal SCP1914 (login required); Mouse_Compensatory's cell2location reference is a 28,014-cell processed copy"
     path: data/raw/morris2022      # the folder the files land in; qc reads an h5ad / mtx / csv inside it
     label_key: Level1              # Level0 (six types) or Level1 (follicle and corpus luteum states)
     gene_key: null
@@ -78,7 +79,7 @@ datasets:
       control: diestrus
       time_h: {hcg_8h: 8}
     status: fill_in
-    notes: "Morris, Meinsohn et al. 2022, eLife 11:e77239, the cycling adult ovary (Pépin lab). >34,000† cells; the 28,014-cell reused object is the cell2location reference of Mantri 2024. The only estrous-staged whole-ovary atlas."
+    notes: "Morris, Meinsohn et al. 2022, eLife 11:e77239, the cycling adult ovary (Pépin lab). >34,000 cells (eLife abstract); deposited on OSF 924fz and SCP1914, not GEO; the 28,014-cell reused object is the cell2location reference of Mantri 2024. The only estrous-staged whole-ovary atlas."
 
   - name: huang2025
     enabled: true
@@ -91,7 +92,7 @@ datasets:
     source:
       type: url
       accession: GSE294534
-      urls: []                     # fill from the GEO supplementary folder (checklist step 3)
+      urls: [https://ftp.ncbi.nlm.nih.gov/geo/series/GSE294nnn/GSE294534/suppl/GSE294534_10x_update.rds]   # the only supplementary file (listed 2026-11-19); a Seurat object -> R/rds_to_mtx.R
     path: data/raw/huang2025
     label_key: null                # fill in
     gene_key: null

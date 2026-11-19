@@ -133,7 +133,7 @@ goes into a grant or a manuscript they are re-read in the paper. The
 ones the plan actually leans on:
 
 - cell and nucleus counts for Morris 2022 (the repo's reused object has
-  28,014 cells; the paper reports >34,000; GEO GSE192722), Wagner 2020,
+  28,014 cells; the paper reports >34,000; **not GEO GSE192722, which is Lustgarten Guahmich 2023 human theca: the data are on OSF 924fz / SCP1914**, found 2026-11-19), Wagner 2020,
   Huang 2025 (GSE294534), Wang/Suh (GSE267729), Gaylord 2025 (GSE290743),
   GSE329417 (439,011 nuclei), the Slide-seq ageing atlas (610,620 spots);
 - the STATE margins (63 % / 47 % / 5 %) and the cancer
@@ -169,7 +169,7 @@ counts; nothing enters from an integrated or normalised object.
 | Dataset | What it contributes | Accession |
 | --- | --- | --- |
 | Isola/Ocañas 2024 (Stout lab) | 3 vs 9 months, 14,349 cells, the authors' 16 labels; already the repo's reference atlas | GSE232309 (also Census) |
-| Morris/Meinsohn 2022 (Pépin lab) | the only estrous-staged whole-ovary atlas; PMSG/hCG 8 h arm; lactation; the Level 0/1 vocabulary the Cell Ontology terms were anchored to | GSE192722 (28,014-cell reused object; >34,000† in the paper) |
+| Morris/Meinsohn 2022 (Pépin lab) | the only estrous-staged whole-ovary atlas; PMSG/hCG 8 h arm; lactation; the Level 0/1 vocabulary the Cell Ontology terms were anchored to | OSF 924fz / Broad SCP1914 (28,014-cell reused object; >34,000 in the paper). GSE192722 was wrong (human theca) |
 | Huang 2025 (Shalek lab) | hCG 0 / 4 / 12 h, n = 3 per time point, 25,714† cells, paired MERFISH | GSE294534 |
 | ex vivo ovulation series (Nature Cell Biology 2024) | follicles at 0 / 3 / 6 / 9 / 12 h after hCG, with in vitro arms | scBaseCount SRX23566711-38 (confirm the GEO series) |
 | Wang/Suh estropausal transition (PNAS 2026) | young, peri- and post-estropausal, estrous-staged, senescence-sorted | GSE267729† |
@@ -179,7 +179,7 @@ counts; nothing enters from an integrated or normalised object.
 | lifespan and puberty sets | P1-12 months stroma; 2-6 weeks weekly; ovary vs oviduct vs uterus | GSE127106, GSE268466, GSE241318 |
 | developmental | pregranulosa 52,542† cells (E11.5-P5); Garcia-Alonso mouse gonad 63,929 | Niu & Spradling 2020 (accession to confirm); Census "Mouse Female" |
 | genetic models | ERα knockout; Cacna2d3 knockout (16,705† cells); Trim28 knockout | PLOS ONE 2024 (accession to confirm); PMC10626498; SRA |
-| **own data** | ooph vs sham 30 d, 4 mice, ~50,000 nuclei, Visium HD twins; 120 d cohort to come | Mouse_Compensatory delivery (held out, never trained on) |
+| **own data** | ooph vs sham 30 d, 4 mice, 81,736 nuclei x 27,323 genes (`inspect`, 2026-11-19), Visium HD twins; 120 d cohort to come | Mouse_Compensatory delivery (held out, never trained on) |
 
 **Tier B, mouse, SRA-wide via scBaseCount** (release 2026-01-12): 53
 UBERON-ovary experiments with 488,541 cells, 870,640 cells by text match,

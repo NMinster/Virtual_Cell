@@ -75,7 +75,7 @@ confirmed number into `config/corpus.yaml` `notes:` (and fix the memo if
 it is wrong):
 
 - [ ] Morris 2022: cell count (the paper says > 34,000; the reused object
-      has 28,014), GEO GSE192722 file list and format.
+      has 28,014), the OSF 924fz file list and format (GSE192722 is NOT this dataset: it is Lustgarten Guahmich 2023, human theca).
 - [ ] Huang 2025 (PLOS Biology): 25,714 cells, 3 animals per time point,
       GSE294534 file list.
 - [ ] Wang/Suh estropausal transition: accession GSE267729 and the design.
@@ -99,7 +99,7 @@ from 2025-2026 meetings.
 - [ ] `bash biowulf/run.sh inspect` → every enabled dataset is `status:
       ready` or says what is `fill_in`.
 - [ ] Morris 2022: list
-      `https://ftp.ncbi.nlm.nih.gov/geo/series/GSE192nnn/GSE192722/suppl/`,
+      `https://api.osf.io/v2/nodes/924fz/files/osfstorage/` (OSF, not GEO),
       put the file URLs under `source.urls`. If the deposit is a Seurat
       `.rds`, it is converted after download (step 4).
 - [ ] Huang 2025: same for GSE294534.
