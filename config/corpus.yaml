@@ -59,7 +59,7 @@ datasets:
     tier: A
     species: mouse
     suspension_type: cell
-    assay: "10x"
+    assay: inDrops                 # the eLife reviews call the deposit "the combined inDROP scRNA-seq dataset"; confirm from the CSV
     strain: null
     sex: female
     source:
