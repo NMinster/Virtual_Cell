@@ -99,13 +99,13 @@ datasets:
       type: url
       accession: GSE294534
       urls: [https://ftp.ncbi.nlm.nih.gov/geo/series/GSE294nnn/GSE294534/suppl/GSE294534_10x_update.rds]   # the only supplementary file (listed 2026-11-19); a Seurat object -> R/rds_to_mtx.R
-    path: data/raw/huang2025
-    label_key: null                # fill in
+    path: data/raw/huang2025/mtx   # R/rds_to_mtx.R output (2026-11-19): 32,285 genes x 25,714 cells + meta.csv (20 columns)
+    label_key: final_cluster       # meta.csv also has final_abbr, ff_names, subcluster, seurat_clusters; DF.classifications_* is the authors' doublet call
     gene_key: null
-    animal_key: null               # fill in: n = 3 per time point
+    animal_key: orig.ident         # one 10x library per mouse, n = 3 per time point (confirm from the orig.ident x timepoints crosstab)
     condition:
-      key: timepoint               # fill in
-      map: {"0h": hcg_0h, "4h": hcg_4h, "12h": hcg_12h}
+      key: timepoints              # meta.csv: timepoints (and timep); the raw values go in `map` once read
+      map: {"0h": hcg_0h, "4h": hcg_4h, "12h": hcg_12h}   # fill in with the exact strings of meta.csv$timepoints
       family: ovulation
       control: hcg_0h
       time_h: {hcg_0h: 0, hcg_4h: 4, hcg_12h: 12}
