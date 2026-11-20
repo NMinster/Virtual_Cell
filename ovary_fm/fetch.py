@@ -23,8 +23,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import tarfile
 import time
+import urllib.parse
 import urllib.request
+import zipfile
 from pathlib import Path
 
 import pandas as pd
@@ -67,13 +71,136 @@ def download(url: str, dest: Path, overwrite: bool = False) -> dict:
     return record
 
 
+ARCHIVE_SUFFIXES = (".zip", ".tar", ".tar.gz", ".tgz", ".tar.bz2")
+
+
+def url_target_name(item) -> tuple[str, str]:
+    """A `source.urls` item is a URL string or `{url: ..., name: ...}`.
+
+    The file name is `name` when given, else the URL's last non-empty path
+    segment. A URL whose last segment is an opaque id (OSF `/download/dsf4r/`)
+    must carry `name`, or the download is refused rather than saved nameless.
+    """
+    if isinstance(item, dict):
+        url, name = item["url"], item.get("name")
+    else:
+        url, name = str(item), None
+    if not name:
+        segment = urllib.parse.urlparse(url).path.rstrip("/").rsplit("/", 1)[-1]
+        name = urllib.parse.unquote(segment)
+    if not name or "." not in name:
+        raise SystemExit(f"cannot name the download from {url!r}: give it as {{url: ..., name: <file.ext>}} in corpus.yaml")
+    return url, name
+
+
+def _safe_members(archive, folder: Path):
+    """Reject archive members that would land outside `folder`."""
+    root = folder.resolve()
+    names = archive.namelist() if isinstance(archive, zipfile.ZipFile) else archive.getnames()
+    for name in names:
+        if not (root / name).resolve().is_relative_to(root):
+            raise SystemExit(f"archive member escapes {folder}: {name!r}")
+
+
+def _extract_zip_external(path: Path, folder: Path) -> None:
+    import shutil
+    import subprocess
+    if shutil.which("unzip"):
+        cmd = ["unzip", "-o", "-q", str(path), "-d", str(folder)]
+    elif shutil.which("7z"):
+        cmd = ["7z", "x", "-y", f"-o{folder}", str(path)]
+    else:
+        raise SystemExit(f"{path.name} uses a zip method Python cannot decode and neither `unzip` nor `7z` "
+                         f"is on PATH; unpack it by hand into {folder}")
+    print(f"  ~ python zipfile cannot decode {path.name}; running {' '.join(cmd[:2])}")
+    subprocess.run(cmd, check=True)
+
+
+def extract_archive(path: Path, folder: Path) -> dict:
+    """Unpack a .zip / .tar* next to itself, once (a marker file records it)."""
+    marker = folder / f".{path.name}.extracted"
+    if marker.exists():
+        return {"archive": path.name, "extracted": True, "skipped": True}
+    print(f"  ~ extracting {path.name}")
+    if path.suffix == ".zip":
+        with zipfile.ZipFile(path) as z:
+            _safe_members(z, folder)
+            n = len(z.namelist())
+            try:
+                z.extractall(folder)
+            except NotImplementedError:
+                # Deflate64 (method 9), which OSF and Windows "send to zip" produce;
+                # Python's zipfile cannot decode it, Info-ZIP's unzip and 7z can.
+                _extract_zip_external(path, folder)
+    else:
+        with tarfile.open(path) as t:
+            _safe_members(t, folder)
+            try:
+                t.extractall(folder, filter="data")
+            except TypeError:               # python < 3.12
+                t.extractall(folder)
+            n = len(t.getnames())
+    marker.write_text(f"{n} members\n")
+    return {"archive": path.name, "extracted": True, "members": n, "skipped": False}
+
+
 def _fetch_urls(entry, folder: Path) -> list[dict]:
-    urls = (entry.get("source") or {}).get("urls") or []
-    if not urls:
+    items = (entry.get("source") or {}).get("urls") or []
+    if not items:
         print(f"  !! {entry['name']}: source.urls is empty (status {entry.get('status')}); "
-              f"list the GEO supplementary folder and fill config/corpus.yaml")
+              f"list the repository's file folder and fill config/corpus.yaml")
         return []
-    return [download(url, folder / url.rsplit("/", 1)[-1]) for url in urls]
+    records = []
+    for item in items:
+        url, name = url_target_name(item)
+        record = download(url, folder / name)
+        if name.lower().endswith(ARCHIVE_SUFFIXES):
+            record["extraction"] = extract_archive(folder / name, folder)
+        records.append(record)
+    return records
+
+
+def _proxy_tiledb_config() -> dict:
+    """TileDB-SOMA's S3 client ignores http(s)_proxy; hand it the proxy explicitly.
+
+    On Biowulf compute nodes `biowulf/run.sh` exports https_proxy=http://dtn03-e0:3128.
+    """
+    proxy = os.environ.get("https_proxy") or os.environ.get("HTTPS_PROXY") or os.environ.get("http_proxy")
+    if not proxy:
+        return {}
+    u = urllib.parse.urlparse(proxy if "://" in proxy else f"http://{proxy}")
+    cfg = {"vfs.s3.proxy_host": u.hostname, "vfs.s3.proxy_port": str(u.port or 3128),
+           "vfs.s3.proxy_scheme": u.scheme or "http"}
+    if u.username:
+        cfg["vfs.s3.proxy_username"] = u.username
+    if u.password:
+        cfg["vfs.s3.proxy_password"] = u.password
+    return cfg
+
+
+DISCOVER_API = "https://api.cellxgene.cziscience.com/curation/v1"
+
+
+def _discover_collection(collection: str) -> pd.DataFrame:
+    """The datasets of a CELLxGENE Discover collection, with their public h5ad URLs.
+
+    A plain HTTPS GET, so it honours the proxy like every other download here;
+    this is the route that works on a Biowulf compute node.
+    """
+    with urllib.request.urlopen(f"{DISCOVER_API}/collections/{collection}", timeout=120) as r:
+        payload = json.load(r)
+    rows = []
+    for ds in payload.get("datasets", []):
+        h5ad = [a for a in ds.get("assets", []) if str(a.get("filetype", "")).upper() == "H5AD"]
+        if not h5ad:
+            continue
+        rows.append({"dataset_id": ds.get("dataset_id") or ds.get("id"),
+                     "dataset_title": ds.get("title"),
+                     "dataset_total_cell_count": int(ds.get("cell_count") or 0),
+                     "h5ad_url": h5ad[0].get("url"), "h5ad_bytes": h5ad[0].get("filesize"),
+                     "collection_id": collection, "collection_name": payload.get("name"),
+                     "dataset_version_id": ds.get("dataset_version_id")})
+    return pd.DataFrame(rows)
 
 
 def _fetch_census(entry, dest: Path) -> list[dict]:
@@ -87,7 +214,30 @@ def _fetch_census(entry, dest: Path) -> list[dict]:
     version = src.get("census_version", "stable")
     if not collection and not dataset_id:
         raise SystemExit(f"{entry['name']}: a cellxgene_collection source needs collection_id or dataset_id")
-    with cellxgene_census.open_soma(census_version=version) as census:
+    # Route 1 (default when the authors' h5ad is wanted): the Discover API +
+    # a plain HTTPS download of the public h5ad. Works through the proxy.
+    if collection and src.get("author_h5ad", True) and src.get("route", "discover") == "discover":
+        try:
+            table = _discover_collection(collection)
+        except Exception as exc:                       # noqa: BLE001 - fall through to SOMA
+            print(f"  !! Discover API failed ({exc!r}); falling back to the Census SOMA route")
+            table = pd.DataFrame()
+        if dataset_id and not table.empty:
+            table = table[table["dataset_id"] == dataset_id]
+        if not table.empty:
+            table = table.sort_values("dataset_total_cell_count", ascending=False)
+            chosen = table.iloc[0]
+            print(f"  discover: {len(table)} dataset(s) in the collection; taking "
+                  f"{chosen['dataset_id']} ({chosen['dataset_total_cell_count']:,} cells): {chosen.get('dataset_title')}")
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            record = download(chosen["h5ad_url"], dest)
+            table.to_csv(dest.parent / "census_datasets.csv", index=False)
+            return [{"dataset_id": chosen["dataset_id"], "path": str(dest), "route": "discover",
+                     "dataset_version_id": chosen.get("dataset_version_id"), "sha256": record["sha256"]}]
+    # Route 2: the Census SOMA object on S3, with the proxy handed to TileDB.
+    from tiledbsoma import SOMATileDBContext
+    context = SOMATileDBContext(tiledb_config=_proxy_tiledb_config())
+    with cellxgene_census.open_soma(census_version=version, context=context) as census:
         table = census["census_info"]["datasets"].read().concat().to_pandas()
     if dataset_id:
         table = table[table["dataset_id"] == dataset_id]
@@ -107,7 +257,7 @@ def _fetch_census(entry, dest: Path) -> list[dict]:
     elif src.get("author_h5ad", True):
         cellxgene_census.download_source_h5ad(chosen["dataset_id"], to_path=str(dest), census_version=version)
     else:
-        adata = cellxgene_census.get_anndata(census=cellxgene_census.open_soma(census_version=version),
+        adata = cellxgene_census.get_anndata(census=cellxgene_census.open_soma(census_version=version, context=context),
                                              organism="Mus musculus" if entry.get("species") == "mouse" else "Homo sapiens",
                                              obs_value_filter=f"dataset_id == '{chosen['dataset_id']}' and is_primary_data == True",
                                              X_name="raw")

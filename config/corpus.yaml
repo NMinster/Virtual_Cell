@@ -59,26 +59,33 @@ datasets:
     tier: A
     species: mouse
     suspension_type: cell
-    assay: "10x"
+    assay: inDrops                 # the eLife reviews call the deposit "the combined inDROP scRNA-seq dataset"; confirm from the CSV
     strain: null
     sex: female
     source:
       type: url
-      accession: GSE192722
-      urls: []                     # fill from https://ftp.ncbi.nlm.nih.gov/geo/series/GSE192nnn/GSE192722/suppl/ (checklist step 3)
-    path: data/raw/morris2022      # the folder the files land in; qc reads an h5ad / mtx / csv inside it
-    label_key: Level1              # Level0 (six types) or Level1 (follicle and corpus luteum states)
+      accession: OSF:924fz         # NOT GSE192722: that series is Lustgarten Guahmich 2023 (human theca, Comms Biol). Checked 2026-11-19.
+      urls:                        # the OSF file list (2026-11-19): one zip, 301,769,964 bytes; fetch unpacks it into path/
+        - {url: "https://osf.io/download/dsf4r/", name: musCyclingOvaryData.zip}
+      alt: "Broad Single Cell Portal SCP1914 (login required); Mouse_Compensatory's cell2location reference is a 28,014-cell processed copy"
+    path: data/raw/morris2022      # the folder: musMaryData.csv (genes x barcodes, 25,289 x 403,424, 20 GB, unfiltered inDrops) + a *meta* table
+    read:                          # how the csv is read (ovary_fm.io.read_counts)
+      csv_chunk_rows: 512
+      csv_min_counts: 1000         # the authors kept 1,000-20,000 UMI; 403 K barcodes are mostly empty droplets
+      unmangle_r_names: true       # "X0610006L08Rik" -> "0610006L08Rik", "mt.Nd6" -> "mt-Nd6"
+      barcode_regex: '^mary_(?P<library>\d+)_(?P<sample>[^_]+)_\d+$'   # mary_34557529_1.1-1A_000001 -> library, sample
+    label_key: Level1              # from the SCP1914 metadata table once it sits in the folder (Level0 six types / Level1 states)
     gene_key: null
-    animal_key: null               # fill in: the per-mouse column once the object is read
+    animal_key: sample             # the inDrops sample code (1.1-1A, 4.1-4D, ...); confirm one sample = one mouse from the metadata
     condition:
-      key: stage                   # fill in: the column with proestrus / estrus / metestrus / diestrus / PMSG-hCG 8 h / lactation
+      key: stage                   # from the SCP1914 metadata table; the csv itself carries no stage. Until the table is in the folder, qc runs with condition unset
       map: {proestrus: proestrus, estrus: estrus, metestrus: metestrus, diestrus: diestrus,
             "pmsg_hcg_8h": hcg_8h, lactating: lactating}
       family: cycle
       control: diestrus
       time_h: {hcg_8h: 8}
-    status: fill_in
-    notes: "Morris, Meinsohn et al. 2022, eLife 11:e77239, the cycling adult ovary (Pépin lab). >34,000† cells; the 28,014-cell reused object is the cell2location reference of Mantri 2024. The only estrous-staged whole-ovary atlas."
+    status: fill_in                # until scp1914 metadata (stage, Level0/1 labels per barcode) is in data/raw/morris2022/
+    notes: "Morris, Meinsohn et al. 2022, eLife 11:e77239, the cycling adult ovary (Pépin lab). >34,000 cells (eLife abstract); deposited on OSF 924fz (the unfiltered count csv) and SCP1914 (labels + stage per barcode; login), not GEO; the 28,014-cell reused object is the cell2location reference of Mantri 2024. The only estrous-staged whole-ovary atlas."
 
   - name: huang2025
     enabled: true
@@ -91,14 +98,14 @@ datasets:
     source:
       type: url
       accession: GSE294534
-      urls: []                     # fill from the GEO supplementary folder (checklist step 3)
-    path: data/raw/huang2025
-    label_key: null                # fill in
+      urls: [https://ftp.ncbi.nlm.nih.gov/geo/series/GSE294nnn/GSE294534/suppl/GSE294534_10x_update.rds]   # the only supplementary file (listed 2026-11-19); a Seurat object -> R/rds_to_mtx.R
+    path: data/raw/huang2025/mtx   # R/rds_to_mtx.R output (2026-11-19): 32,285 genes x 25,714 cells + meta.csv (20 columns)
+    label_key: final_cluster       # meta.csv also has final_abbr, ff_names, subcluster, seurat_clusters; DF.classifications_* is the authors' doublet call
     gene_key: null
-    animal_key: null               # fill in: n = 3 per time point
+    animal_key: orig.ident         # one 10x library per mouse, n = 3 per time point (confirm from the orig.ident x timepoints crosstab)
     condition:
-      key: timepoint               # fill in
-      map: {"0h": hcg_0h, "4h": hcg_4h, "12h": hcg_12h}
+      key: timepoints              # meta.csv: timepoints (and timep); the raw values go in `map` once read
+      map: {"0h": hcg_0h, "4h": hcg_4h, "12h": hcg_12h}   # fill in with the exact strings of meta.csv$timepoints
       family: ovulation
       control: hcg_0h
       time_h: {hcg_0h: 0, hcg_4h: 4, hcg_12h: 12}
@@ -154,17 +161,124 @@ datasets:
     status: fill_in
     notes: "Gaylord et al. 2025, Science 390 (Laird lab): mouse and human across age, ~100,000† cells, 11 types incl. glia. The linked accession is the human object; confirm the mouse one."
 
+  # The Benayoun lab menopause-model atlas (Kim et al., bioRxiv 2025; PMC12259092)
+  # is three experiments on one SRA project. Each is its own manifest entry so
+  # that leave-one-dataset-out holds out a whole experiment and the control
+  # of each T3 context is unambiguous. Annotated Seurat objects (the authors'
+  # labels) are on Figshare 10.6084/m9.figshare.28934126; raw FASTQ on SRA
+  # PRJNA863443; code github.com/BenayounLaboratory/Mouse_Menopause_Models.
+  # Counts † are from the paper text; the per-group animal numbers are in
+  # the figure legends and are filled on download (plan_update_2026-11-18.md §2.4).
   - name: benayoun_vcd
     enabled: false
     tier: A
     species: mouse
-    source: {type: url, accession: PRJNA863443, urls: []}
+    suspension_type: cell
+    assay: "10x"
+    sex: female
+    source: {type: url, accession: PRJNA863443, urls: []}   # or the Figshare .rds through R/rds_to_mtx.R
     path: data/raw/benayoun_vcd
     label_key: null
     animal_key: null
-    condition: {key: group, map: {}, family: chemical_menopause, control: vehicle}
+    condition:
+      key: group
+      map: {}                      # fill in: vehicle vs VCD x induction age (3 mo | 10 mo) x time post-injection (30 d | 90 d)
+      family: chemical_menopause
+      control: vehicle
     status: fill_in
-    notes: "The VCD chemical-menopause subset of the Benayoun lab inputs (also E-MTAB-12889, GSE290742 for natural ageing)."
+    notes: "VCD chemical menopause, 47,386† cells: VCD or vehicle injected at 3 or 10 months, ovaries profiled 30 and 90 d post-injection. Four T3 contexts (benchmark.yaml benayoun_vcd_*), each with its own age-matched vehicle control."
+
+  - name: benayoun_foxl2
+    enabled: false
+    tier: A
+    species: mouse
+    suspension_type: cell
+    assay: "10x"
+    sex: female
+    source: {type: url, accession: PRJNA863443, urls: []}
+    path: data/raw/benayoun_foxl2
+    label_key: null
+    animal_key: null
+    condition:
+      key: group
+      map: {}                      # fill in: Foxl2 +/+ vs +/- at ~4 mo and ~9 mo
+      family: genotype
+      control: wt
+    status: fill_in
+    notes: "Foxl2 haploinsufficiency, 21,301† cells, littermate controls at ~4 and ~9 months. Exclude Foxl2 from scoring (benchmark.yaml). The authors' transcriptome clock called these ovaries older than their follicle counts say."
+
+  - name: benayoun_ageing
+    enabled: false
+    tier: A
+    species: mouse
+    suspension_type: cell
+    assay: "10x"
+    sex: female
+    source: {type: url, accession: PRJNA863443, urls: []}
+    path: data/raw/benayoun_ageing
+    label_key: null
+    animal_key: null
+    condition:
+      key: group
+      map: {young: age_4mo, old: age_20mo}
+      family: ageing
+      control: age_4mo
+      age_days: {age_4mo: 120, age_20mo: 600}
+    status: fill_in
+    notes: "Natural ageing 4 vs 20 months (C57BL/6JNia), 9,559† cells. The only public mouse ovary set older than 12 months found so far; pairs with isola2024 (3 vs 9 mo) as a b1 source for the ageing family."
+
+  # The first chemotherapy single-nucleus time course of the mouse ovary.
+  # Nuclei, like the own data. Deposited at CNCB OMIX, not GEO: the download
+  # route is a week-1 check (plan_update_2026-11-18.md §6).
+  - name: chemo_poi_2026
+    enabled: false
+    tier: A
+    species: mouse
+    suspension_type: nucleus
+    assay: "10x"
+    sex: female
+    source: {type: url, accession: OMIX015442, urls: []}    # https://ngdc.cncb.ac.cn/omix/
+    path: data/raw/chemo_poi_2026
+    label_key: null                # the paper annotates 8 major types + granulosa sub-states (PGGC, PLGC1-3, MGC, CGC1-2) + oocyte stages
+    animal_key: null               # one mouse (both ovaries pooled) per sample; n = 3 per group
+    condition:
+      key: group
+      map: {Sham: sham, Cy-3Day: chemo_3d, Cy-21Day: chemo_21d}
+      family: chemotherapy
+      control: sham
+      time_h: {chemo_3d: 72, chemo_21d: 504}
+    status: fill_in
+    notes: "Busulfan 30 mg/kg + cyclophosphamide 120 mg/kg i.p. once; sham / 3 d / 21 d; 70,520† nuclei (Stem Cell Res Ther 2026, 10.1186/s13287-026-05064-8). The hAEC-transplantation arm (43,420† cells) is kept out of the core corpus."
+
+  - name: dhea_pcos_2026
+    enabled: false
+    tier: A
+    species: mouse
+    suspension_type: cell
+    assay: "10x"
+    sex: female
+    source: {type: url, accession: null, urls: []}           # fill in from the paper's data availability (PMC13695363)
+    path: data/raw/dhea_pcos_2026
+    label_key: null
+    animal_key: null
+    condition: {key: group, map: {vehicle: vehicle, DHEA: dhea}, family: drug, control: vehicle}
+    status: fill_in
+    notes: "DHEA-induced PCOS-like ovaries vs vehicle, scRNA-seq with a spatial reference (Int J Womens Health 2026). Androgen excess: the first drug-family context with a public control."
+
+  - name: il11_ageing_2026
+    enabled: false
+    tier: A
+    species: mouse
+    suspension_type: nucleus
+    assay: "10x"
+    sex: female
+    source: {type: url, accession: null, urls: []}           # fill in from Nat Aging 2026, s43587-026-01159-2
+    path: data/raw/il11_ageing_2026
+    label_key: null
+    animal_key: null
+    condition: {key: group, map: {}, family: ageing, control: young}
+    status: fill_in
+    notes: "snRNA-seq of mouse ovarian ageing from the IL-11 / matrix-stiffness paper; Il11ra1 knockout if profiled (then a genotype context). Nuclei: a second modality twin for the own data."
 
   - name: galligos2026
     enabled: false

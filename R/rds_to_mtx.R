@@ -20,9 +20,20 @@ dir.create(outdir, showWarnings = FALSE, recursive = TRUE)
 if (inherits(obj, "Seurat")) {
   suppressPackageStartupMessages(library(Seurat))
   if (is.null(assay)) assay <- DefaultAssay(obj)
+  cat(sprintf("Seurat object: %d cells, assays: %s, default %s\n", ncol(obj),
+              paste(Assays(obj), collapse = ", "), assay))
+  # Seurat v5 may hold split layers (counts.1, counts.2, ...): join them first.
+  if (exists("JoinLayers", where = asNamespace("Seurat"), inherits = FALSE)) {
+    lyr <- tryCatch(Layers(obj[[assay]]), error = function(e) character(0))
+    if (length(lyr) && !(layer %in% lyr) && any(startsWith(lyr, paste0(layer, ".")))) {
+      cat("joining split layers:", paste(lyr, collapse = ", "), "\n")
+      obj[[assay]] <- JoinLayers(obj[[assay]])
+    }
+  }
   counts <- tryCatch(GetAssayData(obj, assay = assay, layer = layer),
                      error = function(e) GetAssayData(obj, assay = assay, slot = layer))
   meta <- obj@meta.data
+  cat("meta.data columns:", paste(colnames(meta), collapse = ", "), "\n")
 } else if (inherits(obj, "SingleCellExperiment")) {
   suppressPackageStartupMessages(library(SingleCellExperiment))
   counts <- SummarizedExperiment::assay(obj, layer)

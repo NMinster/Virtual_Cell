@@ -19,6 +19,9 @@
 #     squeue -u $USER; tail -f logs/<stage>_<jobid>.out; scancel <jobid>
 # Resources per stage can be overridden for one submission:
 #     SUBMIT_MEM=200g SUBMIT_CPUS=16 SUBMIT_TIME=36:00:00 bash biowulf/submit.sh bench
+#     SUBMIT_GRES=gpu:a100:4 bash biowulf/submit.sh train --arm c
+#     SUBMIT_PARTITION=gpuh200 SUBMIT_GRES=gpu:h200:8 SUBMIT_TIME=24:00:00 SUBMIT_MEM=1500g bash biowulf/submit.sh train --arm b
+#     SUBMIT_PARTITION=largemem SUBMIT_MEM=500g bash biowulf/submit.sh chain harmonise bench
 # =============================================================================
 set -euo pipefail
 
@@ -68,6 +71,12 @@ submit() {
     read -r cpus mem time partition gres <<< "$(resources "${stages}" "$*")"
     cpus="${SUBMIT_CPUS:-${cpus}}"; mem="${SUBMIT_MEM:-${mem}}"
     time="${SUBMIT_TIME:-${time}}"; partition="${SUBMIT_PARTITION:-${partition}}"
+    # SUBMIT_GRES=gpu:a100:4 overrides the GPU request. Biowulf limits (batchlim,
+    # 2026-11-19): partition gpu = 56 GPUs/user, 10-day walltime, 4 x A100-80GB
+    # or 8 x L40 per node; partition gpuh200 = 8 GPUs/user, 24 h max, 8 x H200
+    # per node, so pair SUBMIT_PARTITION=gpuh200 SUBMIT_GRES=gpu:h200:8
+    # SUBMIT_TIME=24:00:00 and let the trainer checkpoint/resume.
+    if [[ -n "${SUBMIT_GRES:-}" ]]; then gres="--gres=${SUBMIT_GRES}"; fi
     local extra=()
     [[ -n "${gres:-}" ]] && extra+=("${gres}")
     if [[ -n "${dep}" ]]; then

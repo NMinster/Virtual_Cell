@@ -17,3 +17,6 @@ results/
 logs/
 *.h5ad
 *.parquet
+
+# build metadata from `pip install -e .`
+*.egg-info/

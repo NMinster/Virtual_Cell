@@ -1,0 +1,11 @@
+# Force LF on every checkout: Biowulf scripts and R files break on CRLF
+* text=auto eol=lf
+*.sh text eol=lf
+*.R text eol=lf
+*.py text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.md text eol=lf
+*.h5ad binary
+*.parquet binary
+*.rds binary
